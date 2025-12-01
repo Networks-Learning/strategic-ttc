@@ -9,3 +9,6 @@ version = "0.1.0"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["strategic_ttc*"]
+
+[project.scripts]
+strategic-ttc-generate = "strategic_ttc.cli:main"

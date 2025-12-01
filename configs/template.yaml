@@ -4,14 +4,14 @@ model:
   dtype: bfloat16
 
 experiment:
-  max_tokens: 1024
-  temperature: 1.2
-  n_samples: 300
+  max_tokens: 512
+  temperature: 0.6
+  n_samples: 5
 
 benchmark:
-  type: mgsm_jsonl
+  type: gsm8k_jsonl
   params:
-    path: ../datasets/GSM8K/en.jsonl # relative to yml always (will be resolved by cli)
+    path: ../datasets/GSM8K/test.jsonl # relative to yml always (will be resolved by cli)
     limit:             
 
 verifier:
