@@ -4,6 +4,7 @@ from typing import Optional
 
 from strategic_ttc.config import load_yaml, build_config, build_components
 from strategic_ttc.core.generation import generate_and_save_jsonl
+from strategic_ttc.models.reward_armor import ArmoRewardModel
 
 
 def _parse_args() -> argparse.Namespace:
@@ -50,13 +51,21 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    reward_model = ArmoRewardModel(
+        model_id="RLHFlow/ArmoRM-Llama3-8B-v0.1",
+        device="cuda:1",
+        dtype="bfloat16",
+        local_files_only=False
+    )
+
+
     generate_and_save_jsonl(
         model=model,
         benchmark=benchmark,
         verifier=verifier,
         n_samples=n_samples,
         output_path=str(out_path),
-        reward_model=None,  # TODO
+        reward_model=reward_model,
     )
 
     print(f"[strategic-ttc] Done. JSONL saved to: {out_path}")

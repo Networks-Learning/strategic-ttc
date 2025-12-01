@@ -5,13 +5,13 @@ model:
 
 experiment:
   max_tokens: 512
-  temperature: 0.7
-  n_samples: 128
+  temperature: 0.6
+  n_samples: 5
 
 benchmark:
   type: gsm8k_jsonl
   params:
-    path: ../datasets/GSM8K/test.jsonl # relative to yml always (will be resolved by cli)
+    path: ../datasets/GSM8K/toy.jsonl # relative to yml always (will be resolved by cli)
     limit:             
 
 verifier:
