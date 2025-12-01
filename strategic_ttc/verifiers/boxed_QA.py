@@ -2,8 +2,8 @@ import re
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
 
-from hdetect.interfaces.verifier import VerifierProtocol, VerificationResult
-from hdetect.config import register_verifier
+from strategic_ttc.interfaces.verifier import VerifierProtocol, VerificationResult
+from strategic_ttc.config import register_verifier
 
 CHOICES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
