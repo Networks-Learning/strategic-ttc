@@ -14,51 +14,83 @@ def resolve_device(device: Optional[str]) -> torch.device:
     return torch.device(device)
 
 
+def _to_torch_dtype(dtype_str: Optional[str]):
+    mapping = {
+        "float16": torch.float16,
+        "bfloat16": torch.bfloat16,
+        None: None,
+    }
+    return mapping.get(dtype_str, None)
+
+
+@dataclass
+class GenerationResult:
+    text: str
+    tokens: int   
+
 @dataclass
 class HFChatModel:
     model_id: str
     device: str = "auto"
-    dtype: Optional[str] = "bfloat16"
+    dtype: Optional[str] = None
+
     max_tokens: int = 512
     temperature: float = 0.0
 
+    trust_remote_code: bool = False
+    local_files_only: bool = True
+
     def __post_init__(self):
-        torch_dtype = {
-            "float16": torch.float16,
-            "bfloat16": torch.bfloat16,
-            None: None
-        }.get(self.dtype)
+        torch_dtype = _to_torch_dtype(self.dtype)
+        self._device = resolve_device(self.device)
 
-        self.device = resolve_device(self.device)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.model_id,
+            use_fast=True,
+            trust_remote_code=self.trust_remote_code,
+            local_files_only=self.local_files_only,
+        )
 
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_id,
             torch_dtype=torch_dtype,
-        ).to(self.device)
+            trust_remote_code=self.trust_remote_code,
+            local_files_only=self.local_files_only,
+        ).to(self._device)
 
-    def generate(self, prompt: str) -> str:
-        messages = [
-            {"role": "user", "content": prompt}
-        ]
+        self.name = f"hf_chat:{self.model_id}"
 
+    def generate(self, prompt: str) -> GenerationResult:
+        messages = [{"role": "user", "content": prompt}]
         chat_prompt = self.tokenizer.apply_chat_template(
             messages,
             tokenize=False,
             add_generation_prompt=True,
         )
 
-        inputs = self.tokenizer(chat_prompt, return_tensors="pt").to(self.device)
+        inputs = self.tokenizer(chat_prompt, return_tensors="pt").to(self._device)
+
+        do_sample = self.temperature is not None and float(self.temperature) > 0.0
 
         output_ids = self.model.generate(
             **inputs,
             max_new_tokens=self.max_tokens,
-            temperature=self.temperature,
-            do_sample=self.temperature > 0,
+            do_sample=do_sample,
+            temperature=float(self.temperature) if do_sample else None,
             pad_token_id=self.tokenizer.eos_token_id,
         )
 
-        return self.tokenizer.decode(
-            output_ids[0][inputs["input_ids"].shape[1]:],
+        gen_ids = output_ids[0][inputs["input_ids"].shape[1]:]
+        num_tokens = gen_ids.shape[0]
+
+        decoded = self.tokenizer.decode(
+            gen_ids,
             skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
         )
+
+        return GenerationResult(text=decoded, tokens=num_tokens)
+

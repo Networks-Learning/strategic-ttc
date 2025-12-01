@@ -46,7 +46,7 @@ class GSM8KJsonlBenchmark(BenchmarkProtocol):
                     qid=qid,
                     prompt=prompt,
                     ground_truths=[str(ans)],
-                    meta=obj,  
+                    meta=None,  
                 )
 
                 yielded += 1

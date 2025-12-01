@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from typing import Any, Dict, Optional
+from tqdm.auto import tqdm
 
 from strategic_ttc.interfaces.benchmark import BenchmarkProtocol, Question
 from strategic_ttc.interfaces.verifier import VerifierProtocol, VerificationResult
@@ -47,7 +48,6 @@ def generate_and_save_jsonl(
         {
           "qid": <str>,
           "sample_id": <int>,
-          "prompt": <str>,
           "answer": <str>,
           "verification": {
             "correct": <bool>,
@@ -69,12 +69,18 @@ def generate_and_save_jsonl(
     reward_model_name = getattr(reward_model, "name", None) if reward_model is not None else None
 
     with out_path.open("w", encoding="utf-8") as f:
-        for question in benchmark.iter_questions():
-            for sample_id in range(n_samples):
-                answer = model.generate(question.prompt)
+        for question in tqdm(benchmark.iter_questions(), desc="Generating samples"):
+            answers: list[str] = []
+            correct: list[bool] = []
+            explanations: list[Optional[str]] = []
+            num_tokens: list[int] = []
+            rewards: list[Optional[float]] = []
+
+            for _ in range(n_samples):
+                gen = model.generate(question.prompt)  
 
                 verification = verifier.verify(
-                    model_answer=answer,
+                    model_answer=gen.text,
                     ground_truths=question.ground_truths,
                     prompt=question.prompt,
                     meta=question.meta,
@@ -83,23 +89,28 @@ def generate_and_save_jsonl(
                 reward = _compute_reward(
                     reward_model,
                     question=question,
-                    answer=answer,
+                    answer=gen.text,
                 )
 
-                # 4) Write record
-                record: Dict[str, Any] = {
-                    "qid": question.qid,
-                    "sample_id": sample_id,
-                    "prompt": question.prompt,
-                    "answer": answer,
-                    "verification": {
-                        "correct": verification.correct,
-                        "explanation": verification.explanation,
-                    },
-                    "reward": reward,
-                    "ground_truths": question.ground_truths,
-                    "question_meta": question.meta,
-                    "model_name": model_name,
-                    "reward_model_name": reward_model_name,
-                }
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                answers.append(gen.text)
+                correct.append(verification.correct)
+                explanations.append(verification.explanation)
+                num_tokens.append(gen.tokens)
+                rewards.append(reward)
+
+            record: Dict[str, Any] = {
+                "qid": question.qid,
+                "prompt": question.prompt,
+                "answers": answers,
+                "correct": correct,
+                "explanations": explanations,
+                "num_tokens": num_tokens,
+                "rewards": rewards,
+                "ground_truths": question.ground_truths,
+                "question_meta": question.meta,
+                "model_name": model_name,
+                "reward_model_name": reward_model_name,
+            }
+
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            f.flush()
