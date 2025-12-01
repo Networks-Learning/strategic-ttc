@@ -5,6 +5,8 @@ datasets/
 !datasets/GSM8K/toy.jsonl
 
 runs/
+
+logs/
 #######################
 
 

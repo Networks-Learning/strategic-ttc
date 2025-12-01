@@ -19,7 +19,6 @@ def register_benchmark(name: str):
     def deco(fn: BenchmarkFactory):
         BENCHMARKS[name] = fn
         return fn
-
     return deco
 
 
@@ -27,7 +26,6 @@ def register_verifier(name: str):
     def deco(fn: VerifierFactory):
         VERIFIERS[name] = fn
         return fn
-
     return deco
 
 
@@ -49,6 +47,7 @@ class RunConfig:
     max_tokens: int
     temperature: float
     n_samples: int
+    output_path: str  # resolved to absolute in load_yaml
 
     # benchmark block
     benchmark_type: str
@@ -74,10 +73,12 @@ def build_config(cfg: Dict[str, Any]) -> RunConfig:
       max_tokens: ...
       temperature: ...
       n_samples: ...
+      output_path: ...   # path to JSONL, may be relative to this YAML
 
     benchmark:
       type: ...
-      params: ...
+      params:
+        path: ...        # may be relative to this YAML
 
     verifier:
       type: ...
@@ -90,6 +91,7 @@ def build_config(cfg: Dict[str, Any]) -> RunConfig:
         max_tokens=cfg["experiment"]["max_tokens"],
         temperature=cfg["experiment"]["temperature"],
         n_samples=cfg["experiment"]["n_samples"],
+        output_path=cfg["experiment"]["output_path"],
         benchmark_type=cfg["benchmark"]["type"],
         benchmark_params=cfg["benchmark"].get("params", {}),
         verifier_type=cfg["verifier"]["type"],
@@ -97,18 +99,9 @@ def build_config(cfg: Dict[str, Any]) -> RunConfig:
     )
 
 
-# ---------- COMPONENT BUILDERS ----------
-
-
 def build_components(
     run_cfg: RunConfig,
 ) -> Tuple[HFChatModel, BenchmarkProtocol, VerifierProtocol]:
-    """
-    Instantiate:
-      - HFChatModel (no model registry)
-      - Benchmark via BENCHMARKS registry
-      - Verifier via VERIFIERS registry
-    """
     _ensure_registries_loaded()
 
     model = HFChatModel(
@@ -138,14 +131,18 @@ def build_components(
     return model, benchmark, verifier
 
 
-
-def _resolve_benchmark_path_in_cfg(
+def _resolve_paths_in_cfg(
     cfg: Dict[str, Any],
     cfg_path: Path,
 ) -> Dict[str, Any]:
     """
-    Make benchmark.params.path absolute, resolving relative to the YAML file.
+    Resolve any relative paths in the config to be absolute, relative to the YAML file.
+
+    Currently:
+      - benchmark.params.path
+      - experiment.output_path
     """
+    # benchmark path
     try:
         p = cfg["benchmark"]["params"].get("path")
     except Exception:
@@ -155,6 +152,18 @@ def _resolve_benchmark_path_in_cfg(
         p = Path(p)
         if not p.is_absolute():
             cfg["benchmark"]["params"]["path"] = str((cfg_path.parent / p).resolve())
+
+    # experiment output_path
+    try:
+        out = cfg["experiment"].get("output_path")
+    except Exception:
+        out = None
+
+    if out:
+        out_p = Path(out)
+        if not out_p.is_absolute():
+            cfg["experiment"]["output_path"] = str((cfg_path.parent / out_p).resolve())
+
     return cfg
 
 
@@ -163,5 +172,5 @@ def load_yaml(path: str) -> Dict[str, Any]:
     with cfg_path.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
-    cfg = _resolve_benchmark_path_in_cfg(cfg, cfg_path)
+    cfg = _resolve_paths_in_cfg(cfg, cfg_path)
     return cfg
