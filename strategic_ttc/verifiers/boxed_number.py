@@ -1,5 +1,3 @@
-# strategic_ttc/verifiers/boxed_number.py
-
 import re
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any, Tuple

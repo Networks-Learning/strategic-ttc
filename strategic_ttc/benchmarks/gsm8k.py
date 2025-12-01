@@ -1,5 +1,3 @@
-# strategic_ttc/benchmarks/gsm8k_jsonl.py
-
 import json
 from pathlib import Path
 from typing import Iterable, Optional, Dict, Any, List
