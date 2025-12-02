@@ -65,7 +65,7 @@ def compute_curves_for_model(
     if N == 0:
         raise ValueError("Some questions have zero samples")
 
-    thetas = np.array([2**i for i in range(int(np.log2(N)) + 1)], dtype=int)
+    thetas = np.array([2**i for i in range(int(np.log2(N)) + 1) if 2**i != 2], dtype=int)
 
     maj_means = []
     maj_stds = []

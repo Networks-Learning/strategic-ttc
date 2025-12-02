@@ -26,7 +26,9 @@ def _to_torch_dtype(dtype_str: Optional[str]):
 @dataclass
 class GenerationResult:
     text: str
-    tokens: int   
+    tokens: int
+    waits: int = 0
+
 
 @dataclass
 class HFChatModel:
@@ -63,8 +65,7 @@ class HFChatModel:
 
         self.name = f"hf_chat:{self.model_id}"
 
-    def generate(self, prompt: str) -> GenerationResult:
-        messages = [{"role": "user", "content": prompt}]
+    def _generate_from_messages(self, messages) -> GenerationResult:
         chat_prompt = self.tokenizer.apply_chat_template(
             messages,
             tokenize=False,
@@ -94,3 +95,52 @@ class HFChatModel:
 
         return GenerationResult(text=decoded, tokens=num_tokens)
 
+    def generate(self, prompt: str, wait: int = 0) -> GenerationResult:
+        total_tokens = 0
+
+        messages = [{"role": "user", "content": prompt}]
+        initial = self._generate_from_messages(messages)
+        current_answer = initial.text
+        total_tokens += initial.tokens
+
+        for _ in range(max(0, wait)):
+            answer_with_wait = (current_answer.rstrip() + " wait!").strip()
+
+            messages = [
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": answer_with_wait},
+            ]
+
+            chat_prompt = self.tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=False,
+            )
+
+            inputs = self.tokenizer(chat_prompt, return_tensors="pt").to(self._device)
+            do_sample = self.temperature is not None and float(self.temperature) > 0.0
+
+            output_ids = self.model.generate(
+                **inputs,
+                max_new_tokens=self.max_tokens,
+                do_sample=do_sample,
+                temperature=float(self.temperature) if do_sample else None,
+                pad_token_id=self.tokenizer.eos_token_id,
+            )
+
+            cont_ids = output_ids[0][inputs["input_ids"].shape[1]:]
+            num_tokens = cont_ids.shape[0]
+            total_tokens += num_tokens
+
+            cont_text = self.tokenizer.decode(
+                cont_ids,
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=False,
+            )
+            current_answer = (answer_with_wait + " " + cont_text).strip()
+
+        return GenerationResult(
+            text=current_answer,
+            tokens=total_tokens,
+            waits=max(0, wait),
+        )
