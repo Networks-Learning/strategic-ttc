@@ -38,7 +38,7 @@ class HFChatModel:
     temperature: float = 0.0
 
     trust_remote_code: bool = False
-    local_files_only: bool = True
+    local_files_only: bool = False
 
     def __post_init__(self):
         torch_dtype = _to_torch_dtype(self.dtype)

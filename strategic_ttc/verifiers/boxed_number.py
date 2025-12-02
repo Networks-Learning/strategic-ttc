@@ -120,6 +120,35 @@ def _compare_numbers(pred: str, truth: str, tol: float = 1e-9) -> Tuple[bool, st
     t_norm = truth.strip()
     return p_norm == t_norm, f"string compare: pred='{p_norm}' truth='{t_norm}'"
 
+def parse_pred_from_explanation(expl: Optional[str]) -> Optional[float]:
+    """
+    Extract the predicted numeric value from the verifier explanation.
+
+    Expected explanation format:
+        "{source}='{pred_raw}'; {detail}; truth='{truth}'"
+
+    We extract pred_raw from the first segment and parse it with _parse_simple_number.
+    Returns a float, or None if extraction/parsing fails.
+    """
+    if not expl:
+        return None
+
+    # first chunk before the first ';', e.g. "boxed='72'"
+    first = expl.split(";", 1)[0]
+
+    # extract the raw string inside quotes
+    m = re.search(r"=\s*'(.*)'", first)
+    if not m:
+        return None
+
+    pred_raw = m.group(1).strip()
+    if not pred_raw:
+        return None
+
+    # normalize and parse numerically
+    val = _parse_simple_number(pred_raw)
+    return val
+
 
 @dataclass
 class BoxedNumberVerifier(VerifierProtocol):
