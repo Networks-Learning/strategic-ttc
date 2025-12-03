@@ -1,4 +1,3 @@
-import re
 import random
 from collections import Counter
 from typing import List, Optional, Tuple, Dict, Any
@@ -119,9 +118,6 @@ def compute_curves_for_model(
 
     return thetas, np.array(maj_means), np.array(maj_stds), np.array(rew_means), np.array(rew_stds)
 
-import matplotlib.pyplot as plt
-import numpy as np
-
 def plot_model_curves(
     model_name: str,
     thetas: np.ndarray,
@@ -155,7 +151,7 @@ def plot_model_curves(
         capsize=3,
     )
     ax.set_xlabel("Number of samples")
-    ax.set_title(f"Reward-max\n({num_questions} questions)")
+    ax.set_title(f"Best-of-N\n({num_questions} questions)")
     ax.grid(True, alpha=0.3)
 
     fig.suptitle(f"{model_name}", fontsize=14)

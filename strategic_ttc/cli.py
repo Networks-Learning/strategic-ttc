@@ -34,12 +34,14 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
 
     model, benchmark, verifier = build_components(run_cfg)
     n_samples = run_cfg.n_samples
+    wait = run_cfg.wait
 
     print(f"[strategic-ttc] Config: {cfg_path}")
     print(f"[strategic-ttc] Output: {out_path}")
     print(f"[strategic-ttc] Model: {getattr(model, 'name', 'unknown')}")
     print(f"[strategic-ttc] Benchmark: {benchmark.name} (n_samples={n_samples})")
     print(f"[strategic-ttc] Verifier: {verifier.name}")
+    print(f"[strategic-ttc] Wait rounds: {wait}")
 
     # ensure output directory exists
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -47,7 +49,7 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
     # TODO: make this configurable later
     reward_model = ArmoRewardModel(
         model_id="RLHFlow/ArmoRM-Llama3-8B-v0.1",
-        device="cuda:1",          # or "auto"
+        device="cuda:1",   
         dtype="bfloat16",
         local_files_only=False,
     )
@@ -59,6 +61,7 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
         n_samples=n_samples,
         output_path=str(out_path),
         reward_model=reward_model,
+        wait=wait
     )
 
     print(f"[strategic-ttc] Done. JSONL saved to: {out_path}")

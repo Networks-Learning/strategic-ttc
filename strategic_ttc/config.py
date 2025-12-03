@@ -47,6 +47,7 @@ class RunConfig:
     max_tokens: int
     temperature: float
     n_samples: int
+    wait: int
     output_path: str  # resolved to absolute in load_yaml
 
     # benchmark block
@@ -59,31 +60,6 @@ class RunConfig:
 
 
 def build_config(cfg: Dict[str, Any]) -> RunConfig:
-    """
-    Convert raw YAML dict into a typed RunConfig.
-
-    Expected YAML structure:
-
-    model:
-      model_id: ...
-      device: ...
-      dtype: ...
-
-    experiment:
-      max_tokens: ...
-      temperature: ...
-      n_samples: ...
-      output_path: ...   # path to JSONL, may be relative to this YAML
-
-    benchmark:
-      type: ...
-      params:
-        path: ...        # may be relative to this YAML
-
-    verifier:
-      type: ...
-      params: ...
-    """
     return RunConfig(
         model_id=cfg["model"]["model_id"],
         device=cfg["model"].get("device", "auto"),
@@ -91,6 +67,7 @@ def build_config(cfg: Dict[str, Any]) -> RunConfig:
         max_tokens=cfg["experiment"]["max_tokens"],
         temperature=cfg["experiment"]["temperature"],
         n_samples=cfg["experiment"]["n_samples"],
+        wait=cfg["experiment"].get("wait", 0),
         output_path=cfg["experiment"]["output_path"],
         benchmark_type=cfg["benchmark"]["type"],
         benchmark_params=cfg["benchmark"].get("params", {}),

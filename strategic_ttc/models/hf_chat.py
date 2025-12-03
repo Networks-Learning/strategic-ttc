@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Optional
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
-
+from typing import List
 
 def resolve_device(device: Optional[str]) -> torch.device:
     if device in (None, "auto"):
@@ -25,8 +25,8 @@ def _to_torch_dtype(dtype_str: Optional[str]):
 
 @dataclass
 class GenerationResult:
-    text: str
-    tokens: int
+    texts: List[str]
+    tokens: List[int]
     waits: int = 0
 
 
@@ -45,6 +45,23 @@ class HFChatModel:
     def __post_init__(self):
         torch_dtype = _to_torch_dtype(self.dtype)
         self._device = resolve_device(self.device)
+
+        if "Ministral-3" in self.model_id or "Ministral3" in self.model_id:
+            from transformers import Mistral3ForConditionalGeneration, MistralCommonBackend
+
+
+            print(f"[HFChatModel] Using Ministral-3 tokenizer + model for {self.model_id}")
+
+            self.tokenizer = MistralCommonBackend.from_pretrained(self.model_id)
+            self.model = Mistral3ForConditionalGeneration.from_pretrained(
+                self.model_id,
+                dtype=torch_dtype,
+            ).to(self._device)
+
+            self.name = f"hf_chat:{self.model_id}"
+            self._is_ministral = True
+
+            return
 
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_id,
@@ -65,7 +82,33 @@ class HFChatModel:
 
         self.name = f"hf_chat:{self.model_id}"
 
-    def _generate_from_messages(self, messages) -> GenerationResult:
+    def _generate_once(self, messages) -> tuple[str, int]:
+        do_sample = self.temperature is not None and float(self.temperature) > 0.0
+
+        if getattr(self, "_is_ministral", False):
+            inputs = self.tokenizer.apply_chat_template(
+                messages,
+                tokenize=True,          
+                return_tensors="pt",
+            ).to(self._device)
+
+            output_ids = self.model.generate(
+                **inputs,
+                max_new_tokens=self.max_tokens,
+                do_sample=do_sample,
+                temperature=float(self.temperature) if do_sample else None,
+            )
+
+            prompt_len = inputs["input_ids"].shape[1]
+            gen_ids = output_ids[0][prompt_len:]
+            num_tokens = gen_ids.shape[0]
+
+            decoded = self.tokenizer.decode(
+                gen_ids,
+                skip_special_tokens=True,
+            )
+            return decoded, num_tokens
+
         chat_prompt = self.tokenizer.apply_chat_template(
             messages,
             tokenize=False,
@@ -73,8 +116,6 @@ class HFChatModel:
         )
 
         inputs = self.tokenizer(chat_prompt, return_tensors="pt").to(self._device)
-
-        do_sample = self.temperature is not None and float(self.temperature) > 0.0
 
         output_ids = self.model.generate(
             **inputs,
@@ -93,54 +134,40 @@ class HFChatModel:
             clean_up_tokenization_spaces=False,
         )
 
-        return GenerationResult(text=decoded, tokens=num_tokens)
+        return decoded, num_tokens
+
 
     def generate(self, prompt: str, wait: int = 0) -> GenerationResult:
-        total_tokens = 0
+        all_texts: List[str] = []
+        all_tokens: List[int] = []
 
         messages = [{"role": "user", "content": prompt}]
-        initial = self._generate_from_messages(messages)
-        current_answer = initial.text
-        total_tokens += initial.tokens
+        answer_0, tok_0 = self._generate_once(messages)
+        all_texts.append(answer_0)
+        all_tokens.append(tok_0)
+        current_answer = answer_0
 
         for _ in range(max(0, wait)):
-            answer_with_wait = (current_answer.rstrip() + " wait!").strip()
-
             messages = [
                 {"role": "user", "content": prompt},
-                {"role": "assistant", "content": answer_with_wait},
+                {"role": "assistant", "content": current_answer},
+                {
+                    "role": "user",
+                    "content": (
+                        "Wait. Reflect on your previous answer carefully. "
+                        "If you find any mistake, correct it and give an improved final answer. "
+                        "Otherwise, restate your final answer clearly."
+                    ),
+                },
             ]
 
-            chat_prompt = self.tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=False,
-            )
-
-            inputs = self.tokenizer(chat_prompt, return_tensors="pt").to(self._device)
-            do_sample = self.temperature is not None and float(self.temperature) > 0.0
-
-            output_ids = self.model.generate(
-                **inputs,
-                max_new_tokens=self.max_tokens,
-                do_sample=do_sample,
-                temperature=float(self.temperature) if do_sample else None,
-                pad_token_id=self.tokenizer.eos_token_id,
-            )
-
-            cont_ids = output_ids[0][inputs["input_ids"].shape[1]:]
-            num_tokens = cont_ids.shape[0]
-            total_tokens += num_tokens
-
-            cont_text = self.tokenizer.decode(
-                cont_ids,
-                skip_special_tokens=True,
-                clean_up_tokenization_spaces=False,
-            )
-            current_answer = (answer_with_wait + " " + cont_text).strip()
+            refined, tok_r = self._generate_once(messages)
+            all_texts.append(refined)
+            all_tokens.append(tok_r)
+            current_answer = refined
 
         return GenerationResult(
-            text=current_answer,
-            tokens=total_tokens,
+            texts=all_texts,
+            tokens=all_tokens,
             waits=max(0, wait),
         )
