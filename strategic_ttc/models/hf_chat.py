@@ -46,23 +46,6 @@ class HFChatModel:
         torch_dtype = _to_torch_dtype(self.dtype)
         self._device = resolve_device(self.device)
 
-        if "Ministral-3" in self.model_id or "Ministral3" in self.model_id:
-            from transformers import Mistral3ForConditionalGeneration, MistralCommonBackend
-
-
-            print(f"[HFChatModel] Using Ministral-3 tokenizer + model for {self.model_id}")
-
-            self.tokenizer = MistralCommonBackend.from_pretrained(self.model_id)
-            self.model = Mistral3ForConditionalGeneration.from_pretrained(
-                self.model_id,
-                dtype=torch_dtype,
-            ).to(self._device)
-
-            self.name = f"hf_chat:{self.model_id}"
-            self._is_ministral = True
-
-            return
-
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_id,
             use_fast=True,
@@ -84,30 +67,6 @@ class HFChatModel:
 
     def _generate_once(self, messages) -> tuple[str, int]:
         do_sample = self.temperature is not None and float(self.temperature) > 0.0
-
-        if getattr(self, "_is_ministral", False):
-            inputs = self.tokenizer.apply_chat_template(
-                messages,
-                tokenize=True,          
-                return_tensors="pt",
-            ).to(self._device)
-
-            output_ids = self.model.generate(
-                **inputs,
-                max_new_tokens=self.max_tokens,
-                do_sample=do_sample,
-                temperature=float(self.temperature) if do_sample else None,
-            )
-
-            prompt_len = inputs["input_ids"].shape[1]
-            gen_ids = output_ids[0][prompt_len:]
-            num_tokens = gen_ids.shape[0]
-
-            decoded = self.tokenizer.decode(
-                gen_ids,
-                skip_special_tokens=True,
-            )
-            return decoded, num_tokens
 
         chat_prompt = self.tokenizer.apply_chat_template(
             messages,
@@ -137,7 +96,12 @@ class HFChatModel:
         return decoded, num_tokens
 
 
-    def generate(self, prompt: str, wait: int = 0) -> GenerationResult:
+    def generate(
+        self,
+        prompt: str,
+        wait: int = 0,
+        feedback_model: Optional["HFChatModel"] = None,
+    ) -> GenerationResult:
         all_texts: List[str] = []
         all_tokens: List[int] = []
 
@@ -147,21 +111,46 @@ class HFChatModel:
         all_tokens.append(tok_0)
         current_answer = answer_0
 
+        refine_messages = [
+            {"role": "user", "content": prompt},
+        ]
+        
         for _ in range(max(0, wait)):
-            messages = [
-                {"role": "user", "content": prompt},
-                {"role": "assistant", "content": current_answer},
-                {
-                    "role": "user",
-                    "content": (
-                        "Wait. Reflect on your previous answer carefully. "
-                        "If you find any mistake, correct it and give an improved final answer. "
-                        "Otherwise, restate your final answer clearly."
-                    ),
-                },
-            ]
+            refine_messages.append({"role": "assistant", "content": current_answer})
+            if feedback_model is not None:
+                fb_messages = [
+                    {
+                        "role": "user",
+                        "content": (
+                            "Here is a math problem and a proposed solution.\n\n"
+                            f"Problem:\n{prompt}\n\n"
+                            f"Proposed solution:\n{current_answer}\n\n"
+                            f"History of previous attempts and refinements:\n"
+                            f"{refine_messages}\n"
+                            "Carefully check the reasoning and the final answer. "
+                            "If there is any mistake, explain it briefly and provide a corrected solution. "
+                            "If it is already correct, explain why it is correct and restate the final answer within \\boxed{}.\n\n"
+                        ),
+                    },
+                ]
 
-            refined, tok_r = self._generate_once(messages)
+                feedback_text, _ = feedback_model._generate_once(fb_messages)
+            else:
+                raise NotImplementedError("Feedback model is required for refinement.")
+
+            print(feedback_text)
+            print("\n\n")
+            refine_instruction = (
+                "You previously answered the question above. "
+                "Now you are given feedback on your solution:\n\n"
+                f"{feedback_text}\n\n"
+                "Using this feedback, produce an improved final answer to the original problem. "
+                "If the feedback says your answer was correct, you can keep it but restate the reasoning steps clearly. "
+                "Always end your response with your final answer within \\boxed{}\n"
+            )
+
+            refine_messages.append({"role": "user", "content": refine_instruction})
+            refined, tok_r = self._generate_once(refine_messages)
             all_texts.append(refined)
             all_tokens.append(tok_r)
             current_answer = refined

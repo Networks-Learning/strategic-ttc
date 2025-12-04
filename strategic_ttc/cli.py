@@ -5,7 +5,7 @@ from typing import Optional
 from strategic_ttc.config import load_yaml, build_config, build_components
 from strategic_ttc.core.generation import generate_and_save_jsonl
 from strategic_ttc.models.reward_armor import ArmoRewardModel
-
+from strategic_ttc.models.hf_chat import HFChatModel
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -54,6 +54,9 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
         local_files_only=False,
     )
 
+    feedback_model = model
+
+
     generate_and_save_jsonl(
         model=model,
         benchmark=benchmark,
@@ -61,7 +64,8 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
         n_samples=n_samples,
         output_path=str(out_path),
         reward_model=reward_model,
-        wait=wait
+        wait=wait,
+        feedback_model=feedback_model,
     )
 
     print(f"[strategic-ttc] Done. JSONL saved to: {out_path}")

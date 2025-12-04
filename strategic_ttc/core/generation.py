@@ -38,38 +38,14 @@ def generate_and_save_jsonl(
     output_path: str,
     reward_model: Optional[Any] = None,
     wait: int = 0,
+    feedback_model: Optional[Any] = None,
 ) -> None:
-    """
-    Run n_samples generations per question in `benchmark` using `model`,
-    verify each round with `verifier`, optionally score with `reward_model`, and
-    save everything to a JSONL file at `output_path`.
-
-
-    JSONL schema (one line per question):
-
-        {
-          "qid": <str>,
-          "prompt": <str>,
-
-          # lists of length n_samples; each entry is a list over rounds
-          "answers": [[<str>, ...], ...],        # answers[sample][round]
-          "correct": [[<bool>, ...], ...],
-          "explanations": [[<str or null>, ...], ...],
-          "num_tokens": [[<int>, ...], ...],     # tokens generated per round
-          "rewards": [[<float or null>, ...], ...],
-
-          "wait": <int>,                         # number of continuation rounds requested
-          "ground_truths": [<str>, ...] or null,
-          "question_meta": { ... } or null,
-          "model_name": <str or null>,
-          "reward_model_name": <str or null>
-        }
-    """
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     model_name = getattr(model, "name", None)
     reward_model_name = getattr(reward_model, "name", None) if reward_model is not None else None
+    feedback_model_name = getattr(feedback_model, "name", None) if feedback_model is not None else None
 
     with out_path.open("w", encoding="utf-8") as f:
         for question in tqdm(benchmark.iter_questions(), desc="Generating samples"):
@@ -80,7 +56,12 @@ def generate_and_save_jsonl(
             rewards: List[List[Optional[float]]] = []
 
             for _ in range(n_samples):
-                gen = model.generate(question.prompt, wait=wait)
+                gen = model.generate(
+                    question.prompt,
+                    wait=wait,
+                    feedback_model=feedback_model,
+                )
+
                 sample_answers: List[str] = []
                 sample_correct: List[bool] = []
                 sample_explanations: List[Optional[str]] = []
@@ -126,6 +107,7 @@ def generate_and_save_jsonl(
                 "question_meta": question.meta,
                 "model_name": model_name,
                 "reward_model_name": reward_model_name,
+                "feedback_model_name": feedback_model_name,
             }
 
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
