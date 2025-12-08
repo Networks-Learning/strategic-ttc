@@ -5,7 +5,7 @@ from collections import defaultdict
 
 def load_results(runs_dir="../runs/GSM8K"):
     runs_dir = Path(runs_dir)
-    results = defaultdict(lambda: {"answers": [], "correct": [], "reward": [], "explanations": []})
+    results = defaultdict(lambda: {"answers": [], "correct": [], "reward": [], "explanations": [], "num_tokens": []})
 
     for jsonl_file in runs_dir.glob("*.jsonl"):
         print(f"Processing file: {jsonl_file.name}")
@@ -29,9 +29,11 @@ def load_results(runs_dir="../runs/GSM8K"):
                 explanations = obj.get("explanations", [])
                 correct_list = obj.get("correct", [])
                 reward_list = obj.get("rewards", [])
+                num_tokens = obj.get("num_tokens", [])
 
                 results[model_name]["explanations"].append(explanations)
                 results[model_name]["correct"].append(correct_list)
                 results[model_name]["reward"].append(reward_list)
+                results[model_name]["num_tokens"].append(num_tokens)
 
     return results

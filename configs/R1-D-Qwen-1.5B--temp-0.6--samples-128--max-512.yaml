@@ -1,0 +1,22 @@
+model:
+  model_id: deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
+  device: cuda
+  dtype: bfloat16
+
+experiment:
+  max_tokens: 512
+  temperature: 0.6
+  n_samples: 128
+  output_path: ../runs/GSM8K/R1-D-Qwen-1.5B--temp-0.6--samples-128--max-512.jsonl
+
+benchmark:
+  type: gsm8k_jsonl
+  params:
+    path: ../datasets/GSM8K/test.jsonl
+    limit:             
+
+verifier:
+  type: boxed_number
+  params:
+    tol: 0.00001
+

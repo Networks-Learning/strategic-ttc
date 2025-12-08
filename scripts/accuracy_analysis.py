@@ -55,6 +55,7 @@ def compute_curves_for_model(
     expl_all = data["explanations"]
     corr_all = data["correct"]
     rew_all = data["reward"]
+    token_all = data["num_tokens"]
 
     num_questions = len(corr_all)
     if num_questions == 0:
@@ -71,15 +72,19 @@ def compute_curves_for_model(
     maj_stds = []
     rew_means = []
     rew_stds = []
+    token_means = []
+    token_stds = []
 
     for theta in tqdm(thetas):
         maj_acc_trials = []
         rew_acc_trials = []
+        token_trials = []
 
         for _ in range(sample_size):
             # per trial, per question
             maj_correct_flags = []
             rew_correct_flags = []
+            tokens = []
 
             for q_idx in range(num_questions):
                 n_q = len(corr_all[q_idx])
@@ -93,6 +98,8 @@ def compute_curves_for_model(
                 expl_q = [expl_all[q_idx][i] for i in idxs]
                 corr_q = [corr_all[q_idx][i] for i in idxs]
                 rew_q  = [rew_all[q_idx][i] for i in idxs]
+                token_q = [token_all[q_idx][i] for i in idxs]
+                tokens.append(np.sum(token_q))
 
                 preds_q = [parse_pred_fn(e) for e in expl_q]
                 maj_corr = majority_vote_correct(preds_q, corr_q)
@@ -111,13 +118,17 @@ def compute_curves_for_model(
                 maj_acc_trials.append(np.mean(maj_correct_flags))
             if rew_correct_flags:
                 rew_acc_trials.append(np.mean(rew_correct_flags))
+            if tokens:
+                token_trials.append(np.mean(tokens))
 
         maj_means.append(np.mean(maj_acc_trials) if maj_acc_trials else np.nan)
         maj_stds.append(np.std(maj_acc_trials) if maj_acc_trials else np.nan)
         rew_means.append(np.mean(rew_acc_trials) if rew_acc_trials else np.nan)
         rew_stds.append(np.std(rew_acc_trials) if rew_acc_trials else np.nan)
+        token_means.append(np.mean(token_trials) if token_trials else np.nan)
+        token_stds.append(np.std(token_trials) if token_trials else np.nan)
 
-    return thetas, np.array(maj_means), np.array(maj_stds), np.array(rew_means), np.array(rew_stds)
+    return thetas, np.array(maj_means), np.array(maj_stds), np.array(rew_means), np.array(rew_stds), np.array(token_means), np.array(token_stds)
 
 import matplotlib.pyplot as plt
 import numpy as np
