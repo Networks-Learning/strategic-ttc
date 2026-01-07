@@ -38,60 +38,40 @@ def _ensure_registries_loaded() -> None:
 
 @dataclass(frozen=True)
 class RunConfig:
-    # model block
     model_id: str
     device: str
     dtype: Optional[str]
 
-    # experiment block
     max_tokens: int
     temperature: float
     n_samples: int
-    output_path: str  # resolved to absolute in load_yaml
+    output_path: str  
 
-    # benchmark block
+    system_prompt: Optional[str]  
+    reasoning: bool             
+
     benchmark_type: str
     benchmark_params: Dict[str, Any]
 
-    # verifier block
     verifier_type: str
     verifier_params: Dict[str, Any]
 
 
 def build_config(cfg: Dict[str, Any]) -> RunConfig:
-    """
-    Convert raw YAML dict into a typed RunConfig.
+    experiment_cfg = cfg["experiment"]
 
-    Expected YAML structure:
-
-    model:
-      model_id: ...
-      device: ...
-      dtype: ...
-
-    experiment:
-      max_tokens: ...
-      temperature: ...
-      n_samples: ...
-      output_path: ...   # path to JSONL, may be relative to this YAML
-
-    benchmark:
-      type: ...
-      params:
-        path: ...        # may be relative to this YAML
-
-    verifier:
-      type: ...
-      params: ...
-    """
     return RunConfig(
         model_id=cfg["model"]["model_id"],
         device=cfg["model"].get("device", "auto"),
         dtype=cfg["model"].get("dtype"),
-        max_tokens=cfg["experiment"]["max_tokens"],
-        temperature=cfg["experiment"]["temperature"],
-        n_samples=cfg["experiment"]["n_samples"],
-        output_path=cfg["experiment"]["output_path"],
+
+        max_tokens=experiment_cfg["max_tokens"],
+        temperature=experiment_cfg["temperature"],
+        n_samples=experiment_cfg["n_samples"],
+        output_path=experiment_cfg["output_path"],
+        system_prompt=experiment_cfg.get("system_prompt"),   
+        reasoning=bool(experiment_cfg.get("reasoning", False)), 
+
         benchmark_type=cfg["benchmark"]["type"],
         benchmark_params=cfg["benchmark"].get("params", {}),
         verifier_type=cfg["verifier"]["type"],
@@ -110,6 +90,7 @@ def build_components(
         dtype=run_cfg.dtype,
         max_tokens=run_cfg.max_tokens,
         temperature=run_cfg.temperature,
+        reasoning=run_cfg.reasoning,
     )
 
     try:
@@ -135,14 +116,6 @@ def _resolve_paths_in_cfg(
     cfg: Dict[str, Any],
     cfg_path: Path,
 ) -> Dict[str, Any]:
-    """
-    Resolve any relative paths in the config to be absolute, relative to the YAML file.
-
-    Currently:
-      - benchmark.params.path
-      - experiment.output_path
-    """
-    # benchmark path
     try:
         p = cfg["benchmark"]["params"].get("path")
     except Exception:
@@ -153,7 +126,6 @@ def _resolve_paths_in_cfg(
         if not p.is_absolute():
             cfg["benchmark"]["params"]["path"] = str((cfg_path.parent / p).resolve())
 
-    # experiment output_path
     try:
         out = cfg["experiment"].get("output_path")
     except Exception:

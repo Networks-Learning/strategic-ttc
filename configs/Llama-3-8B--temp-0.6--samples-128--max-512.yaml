@@ -7,13 +7,15 @@ experiment:
   max_tokens: 512
   temperature: 0.6
   n_samples: 128
-  output_path: ../runs/GSM8K/Llama-3-8B--temp-0.6--samples-128--max-512.jsonl
+  output_path: ../final_runs/GSM8K/Llama-3-8B--temp-0.6--samples-128--max-512.jsonl
+
+  system_prompt: Please reason step by step, and put your final answer within \boxed{}.
+  reasoning: false
 
 benchmark:
   type: gsm8k_jsonl
   params:
     path: ../datasets/GSM8K/test.jsonl
-    limit:             
 
 verifier:
   type: boxed_number

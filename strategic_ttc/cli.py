@@ -6,6 +6,20 @@ from strategic_ttc.config import load_yaml, build_config, build_components
 from strategic_ttc.core.generation import generate_and_save_jsonl
 from strategic_ttc.models.reward_armor import ArmoRewardModel
 
+import random
+import numpy as np
+import torch
+
+def set_global_seed(seed: int = 1234) -> None:
+    print(f"[strategic-ttc] Setting global seed: {seed}")
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -25,6 +39,8 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
     if args is None:
         args = _parse_args()
 
+    set_global_seed(1234)
+
     cfg_path = Path(args.config).resolve()
     raw_cfg = load_yaml(str(cfg_path))
     run_cfg = build_config(raw_cfg)
@@ -40,14 +56,15 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
     print(f"[strategic-ttc] Model: {getattr(model, 'name', 'unknown')}")
     print(f"[strategic-ttc] Benchmark: {benchmark.name} (n_samples={n_samples})")
     print(f"[strategic-ttc] Verifier: {verifier.name}")
+    print(f"[strategic-ttc] Reasoning: {run_cfg.reasoning}")
+    if run_cfg.system_prompt is not None:
+        print(f"[strategic-ttc] System prompt: {run_cfg.system_prompt[:80]}...")
 
-    # ensure output directory exists
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # TODO: make this configurable later
     reward_model = ArmoRewardModel(
         model_id="RLHFlow/ArmoRM-Llama3-8B-v0.1",
-        device="cuda:1",          # or "auto"
+        device="cuda:1",       
         dtype="bfloat16",
         local_files_only=False,
     )
@@ -59,6 +76,8 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
         n_samples=n_samples,
         output_path=str(out_path),
         reward_model=reward_model,
+        system_prompt=run_cfg.system_prompt,   
+        reasoning=run_cfg.reasoning,
     )
 
     print(f"[strategic-ttc] Done. JSONL saved to: {out_path}")

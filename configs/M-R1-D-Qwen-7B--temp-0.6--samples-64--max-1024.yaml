@@ -1,0 +1,23 @@
+model:
+  model_id: deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+  device: cuda
+  dtype: bfloat16
+
+experiment:
+  max_tokens: 1024
+  temperature: 0.6
+  n_samples: 64
+  output_path: ../final_runs/GSM8K/M-R1-D-Qwen-7B--temp-0.6--samples-64--max-1024.jsonl
+
+  system_prompt: Please reason step by step, and put your final answer within \boxed{}.
+  reasoning: false
+
+benchmark:
+  type: gsm8k_jsonl
+  params:
+    path: ../datasets/GSM8K/test.jsonl
+
+verifier:
+  type: boxed_number
+  params:
+    tol: 0.00001

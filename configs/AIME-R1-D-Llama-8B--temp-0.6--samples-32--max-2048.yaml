@@ -1,0 +1,23 @@
+model:
+  model_id: deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+  device: cuda
+  dtype: bfloat16
+
+experiment:
+  max_tokens: 2048
+  temperature: 0.6
+  n_samples: 32
+  output_path: ../final_runs/AIME/reason-R1-D-Llama-8B--temp-0.6--samples-32--max-2048.jsonl
+
+  system_prompt: Please reason step by step, and put your final answer within \boxed{}.
+  reasoning: true
+
+benchmark:
+  type: gsm8k_jsonl
+  params:
+    path: ../datasets/AIME/test.jsonl
+
+verifier:
+  type: boxed_number
+  params:
+    tol: 0.00001

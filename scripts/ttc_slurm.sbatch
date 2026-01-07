@@ -4,8 +4,8 @@
 #SBATCH -N 1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
-#SBATCH --time=47:59:00
-#SBATCH --partition=a100
+#SBATCH --time=95:59:00
+#SBATCH --partition=a100,h100,h200
 #SBATCH --gres=gpu:2
 #SBATCH --mem=40G
 #SBATCH -o logs/ttc_%j.out
@@ -29,8 +29,7 @@ source ../svenv/bin/activate
 export OMP_NUM_THREADS=2
 export MKL_NUM_THREADS=2
 
-strategic-ttc-generate \
-    -c "$CONFIG" \
+strategic-ttc-generate -c "$CONFIG" 
 
 deactivate
 echo "[strategic-ttc slurm] Done."

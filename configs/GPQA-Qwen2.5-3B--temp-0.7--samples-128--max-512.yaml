@@ -1,0 +1,21 @@
+model:
+  model_id: Qwen/Qwen2.5-3B-Instruct
+  device: cuda
+  dtype: bfloat16
+
+experiment:
+  max_tokens: 512
+  temperature: 0.7
+  n_samples: 128
+  output_path: ../final_runs/GPQA/Qwen2.5-3B--temp-0.7--samples-128--max-512.jsonl
+
+  reasoning: false
+
+benchmark:
+  type: gsm8k_jsonl
+  params:
+    path: ../datasets/GPQA/test.jsonl
+
+verifier:
+  type: gpqa_mc
+

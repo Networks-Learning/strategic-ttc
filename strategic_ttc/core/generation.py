@@ -1,6 +1,7 @@
 import json
+import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from tqdm.auto import tqdm
 
 from strategic_ttc.interfaces.benchmark import BenchmarkProtocol, Question
@@ -29,6 +30,34 @@ def _compute_reward(
     )
 
 
+def _count_think_tokens(
+    *,
+    model: Any,
+    text: str,
+) -> int:
+    m = re.search(r"<think>(.*?)</think>", text, flags=re.DOTALL | re.IGNORECASE)
+    if not m:
+        return 0
+
+    think_segment = m.group(1)
+
+    tokenizer = getattr(model, "tokenizer", None)
+    if tokenizer is None:
+        return len(think_segment.split())
+
+    ids = tokenizer(think_segment, return_tensors="pt")["input_ids"][0]
+    return int(ids.shape[0])
+
+def _count_existing_lines(path: Path) -> int:
+    if not path.exists():
+        return 0
+    n = 0
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                n += 1
+    return n
+
 def generate_and_save_jsonl(
     *,
     model: Any,
@@ -37,47 +66,36 @@ def generate_and_save_jsonl(
     n_samples: int,
     output_path: str,
     reward_model: Optional[Any] = None,
+    system_prompt: Optional[str] = None,
+    reasoning: bool = False,
 ) -> None:
-    """
-    Run n_samples generations per question in `benchmark` using `model`,
-    verify each with `verifier`, optionally score with `reward_model`, and
-    save everything to a JSONL file at `output_path`.
-
-    JSONL schema (one line per (question, sample)):
-
-        {
-          "qid": <str>,
-          "sample_id": <int>,
-          "answer": <str>,
-          "verification": {
-            "correct": <bool>,
-            "explanation": <str or null>
-          },
-          "reward": <float or null>,
-          "ground_truths": [<str>, ...] or null,
-          "question_meta": { ... } or null,
-          "model_name": <str or null>,
-          "reward_model_name": <str or null>
-        }
-
-    We assume `model` has a .generate(prompt: str) -> str method.
-    """
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     model_name = getattr(model, "name", None)
     reward_model_name = getattr(reward_model, "name", None) if reward_model is not None else None
 
-    with out_path.open("w", encoding="utf-8") as f:
-        for question in tqdm(benchmark.iter_questions(), desc="Generating samples"):
-            answers: list[str] = []
-            correct: list[bool] = []
-            explanations: list[Optional[str]] = []
-            num_tokens: list[int] = []
-            rewards: list[Optional[float]] = []
+    already_done = _count_existing_lines(out_path)
+    total = len(benchmark)
+    print(f"[strategic-ttc] Resuming: {already_done}/{total} questions already in {out_path.name}")
+
+    with out_path.open("a", encoding="utf-8") as f:
+        for idx, question in enumerate(tqdm(benchmark.iter_questions(), total=total, desc="Generating samples")):
+            if idx < already_done:
+                continue
+
+            answers: List[str] = []
+            correct: List[bool] = []
+            explanations: List[Optional[str]] = []
+            num_tokens: List[Any] = []
+            rewards: List[Optional[float]] = []
 
             for _ in range(n_samples):
-                gen = model.generate(question.prompt)  
+                question_prompt = question.prompt
+                if system_prompt is not None:
+                    question_prompt = question_prompt + "\n" + system_prompt  
+
+                gen = model.generate(question_prompt)
 
                 verification = verifier.verify(
                     model_answer=gen.text,
@@ -95,12 +113,18 @@ def generate_and_save_jsonl(
                 answers.append(gen.text)
                 correct.append(verification.correct)
                 explanations.append(verification.explanation)
-                num_tokens.append(gen.tokens)
                 rewards.append(reward)
+
+                if reasoning:
+                    think_tokens = _count_think_tokens(model=model, text=gen.text)
+                    total_tokens = int(gen.tokens)
+                    num_tokens.append([think_tokens, total_tokens])
+                else:
+                    num_tokens.append(int(gen.tokens))
 
             record: Dict[str, Any] = {
                 "qid": question.qid,
-                "prompt": question.prompt,
+                "prompt": question_prompt,
                 "answers": answers,
                 "correct": correct,
                 "explanations": explanations,
