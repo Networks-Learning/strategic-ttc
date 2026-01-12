@@ -2,6 +2,8 @@ import re
 import random
 from collections import Counter
 from typing import List, Optional, Tuple, Dict, Any, Callable
+import os
+import logging
 import numpy as np
 from scipy import stats
 from tqdm import tqdm
@@ -23,15 +25,6 @@ def majority_vote_correct(
     preds: List[Optional[str]],
     correct: List[bool],
 ) -> Optional[bool]:
-    """
-    Given a list of predicted values (strings) and their correctness flags,
-    compute whether the *majority prediction* is correct.
-
-    Strategy:
-      - ignore None preds
-      - find most common pred (ties broken arbitrarily but deterministically)
-      - consider majority pred correct if any sample with that pred is correct.
-    """
     valid = [(p, c) for p, c in zip(preds, correct) if p is not None]
     if not valid:
         return None 
@@ -131,7 +124,6 @@ def compute_curves_for_model_fast(
         if none_id >= 0:
             counts = np.where(batch_preds == none_id, -1, counts)
 
-
         maj_pos = np.argmax(counts, axis=-1)  
         maj_label = np.take_along_axis(batch_preds, maj_pos[..., None], axis=-1).squeeze(-1)  
 
@@ -139,10 +131,11 @@ def compute_curves_for_model_fast(
         maj_and_correct = is_majority & batch_corrs & valid_mask
         maj_correct_flags = np.any(maj_and_correct, axis=-1)  
 
-        maj_correct_float = np.where(has_valid, maj_correct_flags.astype(np.float32), np.nan)  
-        trial_acc_maj = np.nanmean(maj_correct_float, axis=1)  
+        maj_correct_float = np.where(has_valid, maj_correct_flags.astype(np.float32), 0.0)
+        
+        trial_acc_maj = np.mean(maj_correct_float, axis=1)  
 
-        maj_means.append(np.nanmean(trial_acc_maj))
+        maj_means.append(np.mean(trial_acc_maj))
         maj_stds.append(_ci_percentile(trial_acc_maj))
 
         total_tokens_per_q = np.sum(batch_tokens, axis=-1)   
@@ -186,7 +179,7 @@ def plot_model_curves(
     ax.set_xlabel("Number of samples")
     ax.set_ylabel("Accuracy")
     ax.set_title(f"Majority vote\n({num_questions} questions)")
-    ax.grid(True, alpha=0.3)
+    ax.grid(True)
 
     ax = axes[1]
     ax.errorbar(
@@ -197,8 +190,8 @@ def plot_model_curves(
         capsize=3,
     )
     ax.set_xlabel("Number of samples")
-    ax.set_title(f"Reward-max\n({num_questions} questions)")
-    ax.grid(True, alpha=0.3)
+    ax.set_title(f"Best-of-$N$\n({num_questions} questions)")
+    ax.grid(True)
 
     fig.suptitle(f"{model_name}", fontsize=14)
     plt.tight_layout()
@@ -214,6 +207,9 @@ def plot_model_curves_with_tokens(
     token_mean: np.ndarray,
     token_std: np.ndarray,
     num_questions: int,
+    log_scale: bool = False,
+    colors: Dict[str, str] = None,
+    filename: Optional[str] = None,
 ):
     thetas = np.asarray(thetas)
     maj_mean = np.asarray(maj_mean, dtype=float)
@@ -227,28 +223,52 @@ def plot_model_curves_with_tokens(
     fig, axes = plt.subplots(1, 3, figsize=(18, 4), sharex=True)
 
     ax = axes[0]
-    ax.errorbar(thetas, maj_mean, yerr=maj_yerr, fmt="-o", capsize=3)
+    ax.errorbar(thetas, maj_mean, yerr=maj_yerr, fmt="-o", capsize=3, color=colors.get(model_name, None) if colors else None)
     ax.set_xlabel("Number of samples")
     ax.set_ylabel("Accuracy")
-    ax.set_title(f"Majority vote\n({num_questions} questions)")
-    ax.grid(True, alpha=0.3)
+    ax.set_title(f"Majority vote")
+    ax.grid(True)
 
     ax = axes[1]
-    ax.errorbar(thetas, rew_mean, yerr=rew_yerr, fmt="-o", capsize=3)
+    ax.errorbar(thetas, rew_mean, yerr=rew_yerr, fmt="-o", capsize=3, color=colors.get(model_name, None) if colors else None)
     ax.set_xlabel("Number of samples")
-    ax.set_title(f"Reward-max\n({num_questions} questions)")
-    ax.grid(True, alpha=0.3)
+    ax.set_title(f"Best-of-$N$")
+    ax.grid(True)
 
     ax = axes[2]
-    ax.errorbar(thetas, token_mean, yerr=tok_yerr, fmt="-o", capsize=3)
+    ax.errorbar(thetas, token_mean, yerr=tok_yerr, fmt="-o", capsize=3, color=colors.get(model_name, None) if colors else None)
     ax.set_xlabel("Number of samples")
     ax.set_ylabel("Tokens")
-    ax.set_title(f"Tokens\n({num_questions} questions)")
-    ax.grid(True, alpha=0.3)
+    ax.set_title(f"Tokens")
+    ax.grid(True)
+
+    if log_scale:
+        for ax in axes:
+            ax.set_xscale("log", base=2)
 
     fig.suptitle(model_name, fontsize=14)
     fig.tight_layout()
+
+    if filename:
+        out_path = os.path.abspath(filename)
+    else:
+        raise ValueError("No filename provided for saving plot; please provide a valid filename.")
+    
+    parent_dir = os.path.dirname(out_path) or "."
+    os.makedirs(parent_dir, exist_ok=True)
+
+    try:
+        fig.savefig(out_path, bbox_inches="tight")
+    except Exception as e:
+        logging.warning("Failed to save figure %s with current rcParams (error: %s). Trying fallback by disabling text.usetex.", out_path, e)
+        prev_usetex = plt.rcParams.get("text.usetex", False)
+        try:
+            plt.rcParams["text.usetex"] = False
+            fig.savefig(out_path, bbox_inches="tight")
+        finally:
+            plt.rcParams["text.usetex"] = prev_usetex
     plt.show()
+    
 
 
 def _split_asym_err(err, n):
@@ -274,15 +294,20 @@ def plot_all_curves(
     maj_std_dict,
     best_mean_dict,
     best_std_dict,
-    filename="gsm8k_results.pdf"
-):
-    fig, (ax_maj, ax_best) = plt.subplots(2, 1, figsize=(6.75, 5), sharex=True)
-    colors = plt.cm.tab10.colors
+    vertical=True,
+    colors: Dict[str, str] = None,
+    filename="gsm8k_results.pdf",
+):  
+
+    if vertical:
+        fig, (ax_maj, ax_best) = plt.subplots(2, 1, figsize=(6.75, 5), sharex=True)
+    else:
+        fig, (ax_maj, ax_best) = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
 
     for i, model_name in enumerate(sorted(thetas_dict)):
         th = np.asarray(thetas_dict[model_name])
         n = th.size
-        color = colors[i % len(colors)]
+        color = colors.get(model_name, None) if colors else None
 
         display_name = model_name
         if "llama" in display_name.lower():
@@ -321,20 +346,39 @@ def plot_all_curves(
             alpha=0.15, color=color, edgecolor="none"
         )
 
-    ax_maj.set_ylabel("Majority Accuracy")
-    ax_best.set_ylabel(r"Best-of-$N$ Accuracy")
+    ax_maj.set_ylabel(r"$\Delta$ Majority Accuracy")
+    ax_best.set_ylabel(r"$\Delta$ Best-of-$N$ Accuracy")
+    if not vertical:
+        ax_maj.set_xlabel(r"Number of Samples ($N$)")
     ax_best.set_xlabel(r"Number of Samples ($N$)")
 
-    ax_maj.legend(
+    ax_maj.set_xscale("log", base=2)
+    ax_best.set_xscale("log", base=2)
+
+    # if tick_th is not None:
+    #     ax_best.set_xticks(tick_th)
+    # ax_best.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+
+    fig.legend(
         loc="upper center",
-        bbox_to_anchor=(0.5, 1.35),
         ncol=3,
+        bbox_to_anchor=(0.5, 1.1),
         frameon=False,
-        fontsize=9,
     )
 
     plt.tight_layout()
-    plt.savefig(filename, bbox_inches="tight")
+    out_dir = os.path.dirname(os.path.abspath(filename)) or "."
+    os.makedirs(out_dir, exist_ok=True)
+    try:
+        plt.savefig(filename, bbox_inches="tight")
+    except Exception as e:
+        logging.warning("Failed to save plot_all_curves to %s (error: %s). Trying fallback by disabling text.usetex.", filename, e)
+        prev_usetex = plt.rcParams.get("text.usetex", False)
+        try:
+            plt.rcParams["text.usetex"] = False
+            plt.savefig(filename, bbox_inches="tight")
+        finally:
+            plt.rcParams["text.usetex"] = prev_usetex
     plt.show()
 
 
@@ -344,10 +388,15 @@ def plot_all_curves_delta(
     maj_std_dict,
     best_mean_dict,
     best_std_dict,
+    vertical=True,
+    colors: Dict[str, str] = None,
     filename="gsm8k_results_delta.pdf"
-):
-    fig, (ax_maj, ax_best) = plt.subplots(2, 1, figsize=(6.75, 5), sharex=True)
-    colors = plt.cm.tab10.colors
+):  
+
+    if vertical:
+        fig, (ax_maj, ax_best) = plt.subplots(2, 1, figsize=(6.75, 5), sharex=True, constrained_layout=True)
+    else:
+        fig, (ax_maj, ax_best) = plt.subplots(1, 2, figsize=(12, 4), sharey=True, constrained_layout=True)
 
     tick_th = None
 
@@ -356,8 +405,7 @@ def plot_all_curves_delta(
         if tick_th is None:
             tick_th = th
 
-        color = colors[i % len(colors)]
-
+        color = colors.get(model_name, None) if colors else None
         display_name = model_name
         if "llama" in display_name.lower():
             display_name = display_name.replace("llama-", "llama ")
@@ -416,25 +464,37 @@ def plot_all_curves_delta(
 
     ax_maj.set_ylabel(r"$\Delta$ Majority Accuracy")
     ax_best.set_ylabel(r"$\Delta$ Best-of-$N$ Accuracy")
+    if not vertical:
+        ax_maj.set_xlabel(r"Number of Samples ($N$)")
     ax_best.set_xlabel(r"Number of Samples ($N$)")
 
     ax_maj.set_xscale("log", base=2)
     ax_best.set_xscale("log", base=2)
 
-    if tick_th is not None:
-        ax_best.set_xticks(tick_th)
-    ax_best.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+    # if tick_th is not None:
+    #     ax_best.set_xticks(tick_th)
+    # ax_best.get_xaxis().set_major_formatter(plt.ScalarFormatter())
 
-    ax_maj.legend(
+    fig.legend(
         loc="upper center",
-        bbox_to_anchor=(0.5, 1.35),
         ncol=3,
+        bbox_to_anchor=(0.5, 1.1),
         frameon=False,
-        fontsize=9,
     )
 
     plt.tight_layout()
-    plt.savefig(filename, bbox_inches="tight")
+    out_dir = os.path.dirname(os.path.abspath(filename)) or "."
+    os.makedirs(out_dir, exist_ok=True)
+    try:
+        plt.savefig(filename, bbox_inches="tight")
+    except Exception as e:
+        logging.warning("Failed to save plot_all_curves_delta to %s (error: %s). Trying fallback by disabling text.usetex.", filename, e)
+        prev_usetex = plt.rcParams.get("text.usetex", False)
+        try:
+            plt.rcParams["text.usetex"] = False
+            plt.savefig(filename, bbox_inches="tight")
+        finally:
+            plt.rcParams["text.usetex"] = prev_usetex
     plt.show()
 
 
@@ -458,6 +518,168 @@ def _ci_percentile_mean_bootstrap(xs, alpha=0.05, B=2000, rng=None):
     lo, hi = np.quantile(boot_means, [alpha / 2, 1 - alpha / 2])
     return (mu - lo, hi - mu)
 
+import pandas as pd
+
+def plot_difficulty_composition(diff_distributions, boundaries):
+    sanitized_dists = []
+    for dist in diff_distributions:
+        new_dist = {}
+        for k, v in dist.items():
+            key_name = "Unknown" if k is None or k == "" else k
+            new_dist[key_name] = new_dist.get(key_name, 0) + v
+        sanitized_dists.append(new_dist)
+
+    df = pd.DataFrame(sanitized_dists).fillna(0)
+    
+    total_counts = df.sum(axis=1)
+
+    df_percent = df.div(total_counts, axis=0) * 100
+    
+    labels = []
+    for i in range(len(boundaries) - 1):
+        labels.append(f"Bin {i+1}\n({int(boundaries[i])}-{int(boundaries[i+1])})")
+    
+
+    ax = df_percent.plot(
+        kind='bar', 
+        stacked=True, 
+        figsize=(10, 6), 
+
+        colormap='tab10', 
+        edgecolor='black',
+        alpha=0.85
+    )
+    
+    for i, count in enumerate(total_counts):
+        ax.text(i, 102, f"N={int(count)}", ha='center', fontsize=9, fontweight='bold')
+
+    plt.title("Question Difficulty Composition", fontsize=14)
+    plt.xlabel("Reasoning Effort Level (Tokens)", fontsize=12)
+    plt.ylabel("Percentage of Questions (%)", fontsize=12)
+    plt.ylim(0, 110)
+    plt.xticks(ticks=range(len(labels)), labels=labels, rotation=0)
+    plt.legend(title="Difficulty", bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.grid(axis='y', linestyle='--', alpha=0.3)
+    
+    plt.tight_layout()
+    plt.show()
+
+import json
+
+def reasoning_accuracy_curve_second_custom_2(
+    model_results,
+    qs=(0.0, 0.10, 0.17, 0.25, 0.50, 0.75, 1.0),
+    alpha=0.05,
+    B=2000,
+    rng_seed=0,
+    difficulty_path=None,
+):
+    writers_diff = []
+    if difficulty_path is not None:
+        try:
+            with open(difficulty_path, "r") as f:
+                for line in f:
+                    item = json.loads(line)
+                    writers_diff.append(item.get("writer_difficulty", "Unknown"))
+        except Exception as e:
+            print(f"Warning: Could not load difficulty file: {e}")
+            writers_diff = [None] * len(model_results["correct"])
+    else:
+        writers_diff = [None] * len(model_results["correct"])
+
+    if len(writers_diff) != len(model_results["correct"]):
+        print(f"Warning: Diff len ({len(writers_diff)}) != Results len ({len(model_results['correct'])}). truncating to shorter.")
+        min_len = min(len(writers_diff), len(model_results["correct"]))
+        writers_diff = writers_diff[:min_len]
+
+    rng = np.random.default_rng(rng_seed)
+
+    all_think_values = []
+    for token_list in model_results["num_tokens"]:
+        for t in token_list:
+            if isinstance(t, list) and len(t) == 2 and t[0] > 5:
+                all_think_values.append(t[0])
+
+    num_bins = len(qs) - 1
+    if len(all_think_values) == 0:
+        nan_vec = [np.nan] * num_bins
+        nan_err = [(np.nan, np.nan)] * num_bins
+        return nan_vec, nan_err, nan_vec, nan_err, [{} for _ in range(num_bins)], []
+
+    all_think_values = np.asarray(all_think_values, dtype=float)
+    boundaries = np.quantile(all_think_values, qs)
+    
+    all_bin_accs = [[] for _ in range(num_bins)]
+    all_bin_think = [[] for _ in range(num_bins)]
+    all_bin_difs = [[] for _ in range(num_bins)]
+
+    iterator = zip(model_results["correct"], model_results["num_tokens"], writers_diff)
+
+    for correct_list, token_list, q_diff in iterator:
+        q_thinks = []
+        q_corrs = []
+        q_difs = []
+
+        for c, t in zip(correct_list, token_list):
+            if isinstance(t, list) and len(t) == 2 and t[0] > 5:
+                q_thinks.append(t[0])
+                q_corrs.append(c)
+                q_difs.append(q_diff) 
+        
+        if not q_thinks:
+            continue
+
+        q_thinks = np.asarray(q_thinks, dtype=float)
+        q_corrs = np.asarray(q_corrs, dtype=float)
+        q_difs = np.asarray(q_difs) 
+
+        for b in range(num_bins):
+            lo, hi = boundaries[b], boundaries[b + 1]
+            
+            if b == num_bins - 1:
+                mask = (q_thinks >= lo) & (q_thinks <= hi)
+            else:
+                mask = (q_thinks >= lo) & (q_thinks < hi)
+
+            if mask.any():
+                all_bin_accs[b].extend(q_corrs[mask])
+                all_bin_think[b].extend(q_thinks[mask])
+                all_bin_difs[b].extend(q_difs[mask])
+
+    acc_means = []
+    acc_errs = []
+    think_means = []
+    think_errs = []
+    diff_distributions = []
+
+    for b in range(num_bins):
+        data_acc = np.array(all_bin_accs[b], dtype=float)
+        if data_acc.size > 0:
+            acc_means.append(np.mean(data_acc))
+            acc_errs.append(_ci_percentile_mean_bootstrap(data_acc, alpha=alpha, B=B, rng=rng))
+        else:
+            acc_means.append(np.nan)
+            acc_errs.append((np.nan, np.nan))
+
+        data_think = np.array(all_bin_think[b], dtype=float)
+        if data_think.size > 0:
+            think_means.append(np.mean(data_think))
+            think_errs.append(_ci_percentile_mean_bootstrap(data_think, alpha=alpha, B=B, rng=rng))
+        else:
+            think_means.append(np.nan)
+            think_errs.append((np.nan, np.nan))
+
+        data_diff = all_bin_difs[b]
+        if len(data_diff) > 0:
+            sanitized_diffs = ["Unknown" if d is None else str(d) for d in data_diff]
+            
+            unique, counts = np.unique(sanitized_diffs, return_counts=True)
+            diff_distributions.append(dict(zip(unique, counts)))
+        else:
+            diff_distributions.append({})
+
+    return acc_means, acc_errs, think_means, think_errs, diff_distributions, boundaries
+
 
 def reasoning_accuracy_curve_second_custom(
     model_results,
@@ -468,23 +690,23 @@ def reasoning_accuracy_curve_second_custom(
 ):
     rng = np.random.default_rng(rng_seed)
 
-    num_bins = len(qs) - 1
-    all_bin_accs = [[] for _ in range(num_bins)]
-    all_bin_think = [[] for _ in range(num_bins)]
-
     all_think = []
     for correct_list, token_list in zip(model_results["correct"], model_results["num_tokens"]):
         for c, t in zip(correct_list, token_list):
             if isinstance(t, list) and len(t) == 2 and t[0] > 5:
                 all_think.append(t[0])
 
+    num_bins = len(qs) - 1
     if len(all_think) == 0:
         nan_means = [np.nan] * num_bins
         nan_errs = [(np.nan, np.nan)] * num_bins
-        return nan_means, nan_errs, nan_means, nan_errs
+        return nan_means, nan_errs, nan_means, nan_errs, []
 
     all_think = np.asarray(all_think, dtype=float)
     boundaries = np.quantile(all_think, qs)
+
+    all_bin_accs = [[] for _ in range(num_bins)]
+    all_bin_think = [[] for _ in range(num_bins)]
 
     for correct_list, token_list in zip(model_results["correct"], model_results["num_tokens"]):
         think = []
@@ -502,14 +724,15 @@ def reasoning_accuracy_curve_second_custom(
 
         for b in range(num_bins):
             lo, hi = boundaries[b], boundaries[b + 1]
+            
             if b == num_bins - 1:
                 mask = (think >= lo) & (think <= hi)
             else:
                 mask = (think >= lo) & (think < hi)
 
             if mask.any():
-                all_bin_accs[b].append(corr[mask].mean())
-                all_bin_think[b].append(think[mask].mean())
+                all_bin_accs[b].extend(corr[mask])
+                all_bin_think[b].extend(think[mask])
 
     acc_means = []
     acc_errs = []
@@ -518,8 +741,6 @@ def reasoning_accuracy_curve_second_custom(
 
     for b in range(num_bins):
         xs_acc = np.asarray(all_bin_accs[b], dtype=float)
-        xs_th  = np.asarray(all_bin_think[b], dtype=float)
-
         if xs_acc.size == 0:
             acc_means.append(np.nan)
             acc_errs.append((np.nan, np.nan))
@@ -527,6 +748,7 @@ def reasoning_accuracy_curve_second_custom(
             acc_means.append(xs_acc.mean())
             acc_errs.append(_ci_percentile_mean_bootstrap(xs_acc, alpha=alpha, B=B, rng=rng))
 
+        xs_th = np.asarray(all_bin_think[b], dtype=float)
         if xs_th.size == 0:
             think_means.append(np.nan)
             think_errs.append((np.nan, np.nan))
@@ -534,71 +756,7 @@ def reasoning_accuracy_curve_second_custom(
             think_means.append(xs_th.mean())
             think_errs.append(_ci_percentile_mean_bootstrap(xs_th, alpha=alpha, B=B, rng=rng))
 
-    return acc_means, acc_errs, think_means, think_errs
-
-
-# def plot_reasoning_curve_2(
-#     means,
-#     stds,
-#     title="Accuracy vs Reasoning Level",
-#     num_questions=None,
-#     filename=None,
-#     color=None,
-# ):
-#     means = np.asarray(means, dtype=float)
-#     n = means.size
-#     bins = np.arange(1, n + 1)
-
-#     if color is None:
-#         color = plt.cm.tab10.colors[0]
-
-#     stds = np.asarray(stds, dtype=float)
-
-#     if stds.ndim == 1:
-#         lo = hi = stds
-#     elif stds.ndim == 2 and stds.shape == (n, 2):
-#         lo, hi = stds[:, 0], stds[:, 1]
-#     elif stds.ndim == 2 and stds.shape == (2, n):
-#         lo, hi = stds[0, :], stds[1, :]
-#     else:
-#         raise ValueError(f"Unsupported stds shape {stds.shape}; expected ({n},), ({n},2) or (2,{n})")
-
-#     fig, ax = plt.subplots(figsize=(6.75, 3.5))
-
-#     ax.plot(
-#         bins,
-#         means,
-#         marker="o",
-#         markersize=4,
-#         linewidth=1.2,
-#         color=color,
-#     )
-
-#     ax.fill_between(
-#         bins,
-#         means - lo,
-#         means + hi,
-#         alpha=0.15,
-#         color=color,
-#         edgecolor="none",
-#     )
-
-#     ax.set_xticks(bins)
-#     ax.set_xlabel("Reasoning Level")
-#     ax.set_ylabel("Accuracy")
-
-#     if num_questions is not None:
-#         ax.set_title(f"{title}\nQuestions: {num_questions}")
-#     else:
-#         ax.set_title(title)
-
-#     plt.tight_layout()
-
-#     if filename is not None:
-#         plt.savefig(filename, bbox_inches="tight")
-
-#     plt.show()
-
+    return acc_means, acc_errs, think_means, think_errs, all_think
 
 def plot_reasoning_curves_accuracy_and_tokens(
     acc_means,
@@ -630,14 +788,14 @@ def plot_reasoning_curves_accuracy_and_tokens(
     ax_acc.plot(bins, acc_means, marker="o", markersize=4, linewidth=1.2, color=color)
     ax_acc.fill_between(bins, acc_means - acc_lo, acc_means + acc_hi, alpha=0.15, color=color, edgecolor="none")
     ax_acc.set_ylabel("Accuracy")
-    ax_acc.grid(True, alpha=0.3)
+    ax_acc.grid(True)
 
     ax_tok.plot(bins, tok_means, marker="o", markersize=4, linewidth=1.2, color=color)
     ax_tok.fill_between(bins, tok_means - tok_lo, tok_means + tok_hi, alpha=0.15, color=color, edgecolor="none")
     ax_tok.set_xlabel("Reasoning Level")
     ax_tok.set_ylabel("Tokens")
     ax_tok.set_xticks(bins)
-    ax_tok.grid(True, alpha=0.3)
+    ax_tok.grid(True)
 
     if num_questions is not None:
         fig.suptitle(f"{title}\nQuestions: {num_questions}", y=0.98)
@@ -646,5 +804,16 @@ def plot_reasoning_curves_accuracy_and_tokens(
 
     plt.tight_layout()
     if filename is not None:
-        plt.savefig(filename, bbox_inches="tight")
+        out_dir = os.path.dirname(os.path.abspath(filename)) or "."
+        os.makedirs(out_dir, exist_ok=True)
+        try:
+            plt.savefig(filename, bbox_inches="tight")
+        except Exception as e:
+            logging.warning("Failed to save reasoning curves to %s (error: %s). Trying fallback by disabling text.usetex.", filename, e)
+            prev_usetex = plt.rcParams.get("text.usetex", False)
+            try:
+                plt.rcParams["text.usetex"] = False
+                plt.savefig(filename, bbox_inches="tight")
+            finally:
+                plt.rcParams["text.usetex"] = prev_usetex
     plt.show()

@@ -7,6 +7,8 @@ datasets/
 runs/
 final_runs/
 
+figures/*
+
 logs/
 #######################
 

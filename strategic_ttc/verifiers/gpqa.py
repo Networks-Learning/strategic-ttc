@@ -5,12 +5,6 @@ from typing import Optional, List, Dict, Any
 from strategic_ttc.interfaces.verifier import VerifierProtocol, VerificationResult
 from strategic_ttc.config import register_verifier
 
-
-# Matches:
-#   Answer: A
-#   Answer: $A$
-#   Answer:A
-#   ANSWER: b
 _answer_pat = re.compile(
     r"Answer\s*:\s*\$?\s*([ABCD])\s*\$?",
     flags=re.IGNORECASE,

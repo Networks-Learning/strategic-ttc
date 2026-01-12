@@ -74,13 +74,11 @@ def _parse_simple_number(s: str) -> Optional[float]:
     if is_percent:
         s = s[:-1].strip()
 
-    # mixed number "a b/c"
     m = re.match(r"^(\d+)\s+(\d+)/(\d+)$", s)
     if m:
         a, b, c = map(int, m.groups())
         val = a + (b / c if c != 0 else 0.0)
     else:
-        # pure fraction "b/c"
         m = re.match(r"^(\d+)/(\d+)$", s)
         if m:
             b, c = map(int, m.groups())
@@ -133,10 +131,8 @@ def parse_pred_from_explanation(expl: Optional[str]) -> Optional[float]:
     if not expl:
         return None
 
-    # first chunk before the first ';', e.g. "boxed='72'"
     first = expl.split(";", 1)[0]
 
-    # extract the raw string inside quotes
     m = re.search(r"=\s*'(.*)'", first)
     if not m:
         return None
@@ -145,7 +141,6 @@ def parse_pred_from_explanation(expl: Optional[str]) -> Optional[float]:
     if not pred_raw:
         return None
 
-    # normalize and parse numerically
     val = _parse_simple_number(pred_raw)
     return val
 
@@ -165,10 +160,8 @@ class BoxedNumberVerifier(VerifierProtocol):
         truth = (ground_truths or [""])[0]
         truth = str(truth)
 
-        # Prefer \boxed{...} or variants if present
         boxed = _last_boxed_content(model_answer or "")
         if boxed is None or not re.search(r"\d", boxed):
-            # Fallback: last numeric token in the whole answer
             extracted = _extract_numeric(model_answer or "")
             if extracted is None:
                 return VerificationResult(
