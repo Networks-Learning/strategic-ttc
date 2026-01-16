@@ -1,8 +1,8 @@
 #######################
 datasets/
 
-!datasets/GSM8K/
-!datasets/GSM8K/toy.jsonl
+# !datasets/GSM8K/
+# !datasets/GSM8K/toy.jsonl
 
 runs/
 final_runs/
