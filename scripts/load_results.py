@@ -2,7 +2,7 @@ from collections import defaultdict
 from pathlib import Path
 import json
 
-def load_results(runs_dir="../runs/GSM8K"):
+def load_results(runs_dir="../runs/GSM8K", keep_ids=None):
     runs_dir = Path(runs_dir)
 
     results = defaultdict(lambda: {
@@ -36,11 +36,10 @@ def load_results(runs_dir="../runs/GSM8K"):
                     continue
 
                 qid = obj.get("qid")
-                if qid is None:
+                if qid is None or (keep_ids is not None and qid not in keep_ids):
                     continue
 
                 if qid in seen_qids[model_name]:
-                    print(f"Duplicate question ID {qid} in {model_name}")
                     continue
                 seen_qids[model_name].add(qid)
 
