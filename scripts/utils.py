@@ -306,7 +306,7 @@ def save_separated_plots_overlaid(
         metric_idx_mean=1, metric_idx_std=2, is_percentage=True, 
     )
     
-    ax_maj.set_ylabel(r"Accuracy (\\%)")
+    ax_maj.set_ylabel(r"Accuracy (\%)")
     ax_maj.set_ylim(ylim_accuracy)
 
     out_maj = f"{base_filename}majority.pdf"
@@ -324,7 +324,7 @@ def save_separated_plots_overlaid(
         metric_idx_mean=3, metric_idx_std=4, is_percentage=True, 
     )
 
-    ax_bon.set_ylabel(r"Accuracy (\\%)")
+    ax_bon.set_ylabel(r"Accuracy (\%)")
     ax_bon.set_ylim(ylim_accuracy)
     
     out_bon = f"{base_filename}best_of_n.pdf"
@@ -490,7 +490,7 @@ def plot_accuracy_one_figure_reasoning(
         metric_idx_mean=0, metric_idx_err=1, is_accuracy=True
     )
     axes[0].set_title("Accuracy")
-    axes[0].set_ylabel("Accuracy (\\%)")
+    axes[0].set_ylabel("Accuracy (\%)")
     axes[0].set_xlabel(r"Test-time compute ($\theta$)")
 
     style_reasoning_ax(axes[1], global_bins)
@@ -537,7 +537,7 @@ def save_reasoning_plots_separated(
         default_colors=default_colors
     )
 
-    ax_acc.set_ylabel(r"Accuracy (\\%)")
+    ax_acc.set_ylabel(r"Accuracy (\%)")
     ax_acc.set_xlabel(r"Test-time compute ($\theta$)")
 
     out_acc = f"{base_filename}accuracy.pdf"
@@ -725,7 +725,7 @@ def bet_pot_analysis(providers, thetas, betas_to_test, results, base_filename=No
             )
             
         ax_strat.set_ylabel("Test-time compute ($\\theta$)")
-        ax_strat.set_xlabel("Iteration, $t$")
+        ax_strat.set_xlabel("Iteration ($t$)")
         
         if reasoning == False:
             ax_strat.set_yticks(range(len(thetas)))
@@ -743,7 +743,7 @@ def bet_pot_analysis(providers, thetas, betas_to_test, results, base_filename=No
         
         ax_ineff.plot(steps, ineff_data, color='black', linewidth=1.2, linestyle='--', alpha=0.6)
         
-        ax_ineff.set_ylabel(r"Market Inefficiency (\\%)", color='black', fontsize=9)
+        ax_ineff.set_ylabel(r"Market Inefficiency (\%)", color='black', fontsize=9)
         ax_ineff.tick_params(axis='y', labelcolor='black', labelsize=8)
         
         ax_ineff.set_ylim(ineff_ylim)
@@ -758,9 +758,9 @@ def bet_pot_analysis(providers, thetas, betas_to_test, results, base_filename=No
         style_ax(ax_pot)
         
         ax_pot.plot(steps, pot_hist, color='purple', linewidth=1.5)
-        
-        ax_pot.set_ylabel(r"Potential $\Phi$")
-        ax_pot.set_xlabel("Iteration, $t$")
+
+        ax_pot.set_ylabel(r"Potential ($\Phi$)")
+        ax_pot.set_xlabel("Iteration ($t$)")
 
         out_pot = f"{base_filename}/beta{beta_str}/potential.pdf"
         os.makedirs(os.path.dirname(out_pot), exist_ok=True)
@@ -864,7 +864,7 @@ def plot_market_shares(providers, betas_to_test, results, base_filename=None, co
             bottom += provider_shares
             
         ax.set_ylabel("Market Share")
-        ax.set_xlabel("Iteration")
+        ax.set_xlabel("Iteration ($t$)")
         ax.set_ylim(0, 1.0) 
         ax.set_xlim(-0.5, total_steps - 0.5)
 
@@ -900,9 +900,9 @@ def _sanity_check_combined(results, betas_to_test, providers, thetas, color_map,
                 color=color_map[provider_name],
                 alpha=0.9
             )
-        
-        ax_strat.set_ylabel(r"Compute $\theta$")
-        ax_strat.set_xlabel("Iteration")
+
+        ax_strat.set_ylabel(r"Compute ($\theta$)")
+        ax_strat.set_xlabel("Iteration ($t$)")
         
         if not reasoning:
             ax_strat.set_yticks(range(len(thetas)))
@@ -939,13 +939,13 @@ def _sanity_check_combined(results, betas_to_test, providers, thetas, color_map,
             
         ax_share.set_ylim(0, 1.0)
         ax_share.set_ylabel("Share")
-        ax_share.set_xlabel("Iteration")
+        ax_share.set_xlabel("Iteration ($t$)")
 
         ax_pot = axes[i, 2]
         ax_pot.set_title(f"Beta={beta}: Potential")
         ax_pot.plot(steps, pot_hist, color='purple', linewidth=1.5)
-        ax_pot.set_ylabel(r"Potential $\Phi$")
-        ax_pot.set_xlabel("Iteration")
+        ax_pot.set_ylabel(r"Potential ($\Phi$)")
+        ax_pot.set_xlabel("Iteration ($t$)")
 
     sanity_path = f"{base_filename}/check_one.png"
     if os.path.dirname(sanity_path):
@@ -1019,9 +1019,9 @@ def plot_combined_dynamics(providers, thetas, betas_to_test, results, base_filen
                 color=color_map[provider_name],
                 alpha=0.9
             )
-            
-        ax_strat.set_ylabel(r"Compute $\theta$") 
-        
+
+        ax_strat.set_ylabel(r"Compute ($\theta$)")
+
         if not reasoning:
             ax_strat.set_yticks(range(len(thetas)))
             power_labels = [f"$2^{{{int(np.log2(t))}}}$" for t in thetas]
@@ -1065,7 +1065,7 @@ def plot_combined_dynamics(providers, thetas, betas_to_test, results, base_filen
             bottom += provider_shares
             
         ax_share.set_ylabel("Share")
-        ax_share.set_xlabel(r"Iteration, $t$")
+        ax_share.set_xlabel(r"Iteration ($t$)")
         ax_share.set_ylim(0, 1.0)
         ax_share.set_yticks([0, 0.5, 1.0]) 
         ax_share.set_yticklabels(["0", ".5", "1"], fontsize=8)
@@ -1083,8 +1083,8 @@ def plot_combined_dynamics(providers, thetas, betas_to_test, results, base_filen
         ax_pot.tick_params(axis='both', which='major', labelsize=8)
         
         ax_pot.plot(steps, pot_hist, color='purple', linewidth=1.5)
-        ax_pot.set_ylabel(r"Potential $\Phi$")
-        ax_pot.set_xlabel(r"Iteration, $t$")
+        ax_pot.set_ylabel(r"Potential ($\Phi$)")
+        ax_pot.set_xlabel(r"Iteration ($t$)")
 
         out_pot = f"{base_filename}/beta{beta_str}/potential.pdf"
         fig_pot.savefig(out_pot, bbox_inches='tight', pad_inches=0.02)
