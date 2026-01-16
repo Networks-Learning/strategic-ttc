@@ -20,7 +20,7 @@ def load_results(runs_dir="../runs/GSM8K", keep_ids=None):
 
         filename = jsonl_file.stem
         model_name = filename.split("--temp")[0]
-        print(f"Processing {model_name}")
+        # print(f"Processing {model_name}")
 
         with jsonl_file.open("r", encoding="utf-8") as f:
             for i, line in enumerate(f, start=1):
@@ -55,6 +55,8 @@ def load_results(runs_dir="../runs/GSM8K", keep_ids=None):
 
                 total_processed += 1
 
-        print(f"Total processed: {total_processed}")
+        # print(f"Total processed: {total_processed}")
+
+    results = dict(sorted(results.items(), key=lambda item: item[0]))
 
     return results

@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from strategic_ttc.interfaces.verifier import VerifierProtocol, VerificationResult
 from strategic_ttc.config import register_verifier
 
-# --- Optional SymPy Import ---
 try:
     import sympy
     from sympy.parsing.sympy_parser import parse_expr, standard_transformations, implicit_multiplication_application
@@ -218,7 +217,6 @@ def is_equiv_with_detail(pred: str, truth: str) -> Tuple[bool, str]:
         try:
             transforms = standard_transformations + (implicit_multiplication_application,)
             
-            # Catch empty strings before parsing
             if not p_norm or not t_norm:
                 return False, "empty_string"
 
