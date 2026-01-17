@@ -24,6 +24,9 @@ TOL_12 = [
     
 ]
 
+ICML_WIDTH_TEXT_PT = 486
+
+
 def get_fig_dim(width, fraction=1, aspect_ratio=None):
 
     fig_width_pt = width * fraction
@@ -155,7 +158,7 @@ def apply_axis_style(ax: plt.Axes, log_scale: bool, samples_disp: bool) -> None:
         ax.xaxis.set_major_locator(ticker.LogLocator(base=2.0, subs=[1.0], numticks=4))
 
     if samples_disp:
-        ax.set_xlabel("Test-time compute ($\\theta$)")
+        ax.set_xlabel("Test-time compute, $\\theta$")
     else:
         ax.set_xticklabels([])
 
@@ -491,7 +494,7 @@ def plot_accuracy_one_figure_reasoning(
     )
     axes[0].set_title("Accuracy")
     axes[0].set_ylabel("Accuracy (\%)")
-    axes[0].set_xlabel(r"Test-time compute ($\theta$)")
+    axes[0].set_xlabel(r"Test-time compute, $\theta$")
 
     style_reasoning_ax(axes[1], global_bins)
     plot_reasoning_lines(
@@ -500,7 +503,7 @@ def plot_accuracy_one_figure_reasoning(
     )
     axes[1].set_title("Tokens")
     axes[1].set_ylabel("Tokens")
-    axes[1].set_xlabel(r"Test-time compute ($\theta$)")
+    axes[1].set_xlabel(r"Test-time compute, $\theta$")
 
     fig.legend(handles, labels, loc='center right', bbox_to_anchor=(1.15, 0.5))
     
@@ -538,7 +541,7 @@ def save_reasoning_plots_separated(
     )
 
     ax_acc.set_ylabel(r"Accuracy (\%)")
-    ax_acc.set_xlabel(r"Test-time compute ($\theta$)")
+    ax_acc.set_xlabel(r"Test-time compute, $\theta$")
 
     out_acc = f"{base_filename}accuracy.pdf"
     os.makedirs(os.path.dirname(out_acc), exist_ok=True)
@@ -556,7 +559,7 @@ def save_reasoning_plots_separated(
     )
 
     ax_tok.set_ylabel("Tokens")
-    ax_tok.set_xlabel(r"Test-time compute ($\theta$)")
+    ax_tok.set_xlabel(r"Test-time compute, $\theta$")
 
     out_tok = f"{base_filename}tokens.pdf"
     fig_tok.savefig(out_tok, pad_inches=0)
@@ -592,18 +595,37 @@ def plot_v_curves(
     thetas: List[int],
     config: object,
     base_filename: str,
-    width_pt: float = 486,
+    width_pt: float = ICML_WIDTH_TEXT_PT / 3.0,  
     colors: Dict[str, str] = None,
+    reasoning: bool = False
 ):
-    latexify(font_size=10, small_font_size=8)
+    latexify(font_size=9, small_font_size=6)
     
-    figsize = get_fig_dim(width_pt, fraction=1.0, aspect_ratio=0.75)
+    figsize = get_fig_dim(width_pt, fraction=1.0, aspect_ratio=1.6)
     
     fig, ax = plt.subplots(figsize=figsize)
-    style_ax(ax, thetas)
+    
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.get_xaxis().tick_bottom()
+    ax.get_yaxis().tick_left()
+    
+    ax.tick_params(axis='both', which='major', labelsize=6)
+    
+    if not reasoning:
+        ax.set_xscale("log", base=2)
+        ax.set_xticks(thetas)
+        power_labels = [f"$2^{{{int(np.log2(t))}}}$" for t in thetas]
+        ax.set_xticklabels(power_labels, fontsize=6)
+    else:
+        ax.set_xticks(thetas)
+        ax.set_xticklabels([str(t) for t in thetas], fontsize=6)
+    
+    ax.axhline(0, color='black', linewidth=0.8, linestyle='--', alpha=0.5)
     
     default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
     handles, labels = [], []
+    all_v_values = []
 
     for i, (name, v) in enumerate(V_curves.items()):
         if colors and name in colors:
@@ -614,11 +636,13 @@ def plot_v_curves(
         clean_name = name.replace("reason-", "").replace("Distill-", "D-").replace("_", r"\_")
         label_tex = f"\\texttt{{{clean_name}}}"
         
+        all_v_values.extend(v)
+        
         line, = ax.plot(
             thetas, v, 
             marker="o", 
-            linewidth=1.4, 
-            markersize=4,
+            linewidth=1.2, 
+            markersize=3, 
             label=label_tex, 
             color=c,
             alpha=0.9
@@ -627,40 +651,58 @@ def plot_v_curves(
         handles.append(line)
         labels.append(label_tex)
 
-    ax.set_xlabel(r"Test-time compute $\theta$")
-    ax.set_ylabel(r"Value $V(\theta)$")
-    
+    if all_v_values:
+        y_min, y_max = min(all_v_values), max(all_v_values)
+        y_range = y_max - y_min if y_max != y_min else 1.0
+        padding = 0.1 * y_range  
+        ax.set_ylim(y_min - padding, y_max + padding)
+
+    ax.set_xlabel(r"Test-time compute, $\theta$", fontsize=7)
+    ax.set_ylabel(r"Value (\$)", fontsize=7)
 
     out_main = f"{base_filename}v_curves.pdf"
-    os.makedirs(os.path.dirname(out_main), exist_ok=True)
+    if os.path.dirname(out_main):
+        os.makedirs(os.path.dirname(out_main), exist_ok=True)
     fig.savefig(out_main, bbox_inches='tight', pad_inches=0.02)
     plt.close(fig)
     
-    save_standalone_legend(base_filename, handles, labels, width_pt)
+    # Save Legend (full width)
+    save_standalone_legend(base_filename, handles, labels, 486)
     
     print(f"Saved: {out_main}")
     print(f"Saved: {base_filename}_legend.pdf")
 
-    _sanity_check_v_curves(V_curves, thetas, colors, handles, labels, base_filename)
+    _sanity_check_v_curves(V_curves, thetas, colors, handles, labels, base_filename, reasoning=reasoning)
 
-def _sanity_check_v_curves(V_curves, thetas, colors, handles, labels, base_filename):
-    fig, ax = plt.subplots(figsize=(8, 5))
-    style_ax(ax, thetas)
+def _sanity_check_v_curves(V_curves, thetas, colors, handles, labels, base_filename, reasoning=False):
+    """Internal helper to display the plot inline."""
+    # Simulate small visual size in notebook
+    fig, ax = plt.subplots(figsize=(4, 2.5), dpi=120) 
+    
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    if not reasoning:
+        ax.set_xscale("log", base=2)
+        ax.set_xticks(thetas)
+        power_labels = [f"$2^{{{int(np.log2(t))}}}$" for t in thetas]
+        ax.set_xticklabels(power_labels, fontsize=6)
+    else:
+        ax.set_xticks(thetas)
+        ax.set_xticklabels([str(t) for t in thetas], fontsize=6)
+    ax.tick_params(labelsize=8)
     
     for i, (name, v) in enumerate(V_curves.items()):
         c = colors.get(name, 'black') if colors else 'black'
-        ax.plot(thetas, v, marker="o", linewidth=1.4, color=c, label=name)
+        ax.plot(thetas, v, marker="o", linewidth=1.2, markersize=3, color=c)
 
-    ax.set_xlabel("Test-time compute ($\\theta$)")
-    ax.set_ylabel("V")
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    ax.set_xlabel(r"Test-time compute, $\theta$", fontsize=10)
+    ax.set_ylabel(r"Value (\$)", fontsize=10)
     
     sanity_file = f"{base_filename}check_one.png"
-    fig.savefig(sanity_file, dpi=100, bbox_inches='tight')
+    fig.savefig(sanity_file, bbox_inches='tight')
     plt.close(fig)
     display(Image(filename=sanity_file))
-
-ICML_WIDTH_TEXT_PT = 486
+    
 
 def bet_pot_analysis(providers, thetas, betas_to_test, results, base_filename=None, colors=None, reasoning=False):
     latexify(font_size=10, small_font_size=8)
@@ -723,10 +765,10 @@ def bet_pot_analysis(providers, thetas, betas_to_test, results, base_filename=No
                 color=color_map[provider_name],
                 alpha=0.9
             )
-            
-        ax_strat.set_ylabel("Test-time compute ($\\theta$)")
-        ax_strat.set_xlabel("Iteration ($t$)")
-        
+
+        ax_strat.set_ylabel("Test-time compute, $\\theta$")
+        ax_strat.set_xlabel("Iteration, $t$")
+
         if reasoning == False:
             ax_strat.set_yticks(range(len(thetas)))
             power_labels = [f"$2^{{{int(np.log2(t))}}}$" for t in thetas]
@@ -743,7 +785,7 @@ def bet_pot_analysis(providers, thetas, betas_to_test, results, base_filename=No
         
         ax_ineff.plot(steps, ineff_data, color='black', linewidth=1.2, linestyle='--', alpha=0.6)
         
-        ax_ineff.set_ylabel(r"Market Inefficiency (\%)", color='black', fontsize=9)
+        ax_ineff.set_ylabel(r"Inefficiency (\%)", color='black', fontsize=9)
         ax_ineff.tick_params(axis='y', labelcolor='black', labelsize=8)
         
         ax_ineff.set_ylim(ineff_ylim)
@@ -759,8 +801,8 @@ def bet_pot_analysis(providers, thetas, betas_to_test, results, base_filename=No
         
         ax_pot.plot(steps, pot_hist, color='purple', linewidth=1.5)
 
-        ax_pot.set_ylabel(r"Potential ($\Phi$)")
-        ax_pot.set_xlabel("Iteration ($t$)")
+        ax_pot.set_ylabel(r"Potential, $\Phi$")
+        ax_pot.set_xlabel("Iteration, $t$")
 
         out_pot = f"{base_filename}/beta{beta_str}/potential.pdf"
         os.makedirs(os.path.dirname(out_pot), exist_ok=True)
@@ -863,8 +905,8 @@ def plot_market_shares(providers, betas_to_test, results, base_filename=None, co
             
             bottom += provider_shares
             
-        ax.set_ylabel("Market Share")
-        ax.set_xlabel("Iteration ($t$)")
+        ax.set_ylabel("Market share")
+        ax.set_xlabel("Iteration, $t$")
         ax.set_ylim(0, 1.0) 
         ax.set_xlim(-0.5, total_steps - 0.5)
 
@@ -901,8 +943,8 @@ def _sanity_check_combined(results, betas_to_test, providers, thetas, color_map,
                 alpha=0.9
             )
 
-        ax_strat.set_ylabel(r"Compute ($\theta$)")
-        ax_strat.set_xlabel("Iteration ($t$)")
+        ax_strat.set_ylabel(r"Test-time compute, $\theta$")
+        ax_strat.set_xlabel("Iteration, $t$")
         
         if not reasoning:
             ax_strat.set_yticks(range(len(thetas)))
@@ -938,14 +980,14 @@ def _sanity_check_combined(results, betas_to_test, providers, thetas, color_map,
             bottom += p_shares
             
         ax_share.set_ylim(0, 1.0)
-        ax_share.set_ylabel("Share")
-        ax_share.set_xlabel("Iteration ($t$)")
+        ax_share.set_ylabel("Market share")
+        ax_share.set_xlabel("Iteration, $t$")
 
         ax_pot = axes[i, 2]
         ax_pot.set_title(f"Beta={beta}: Potential")
         ax_pot.plot(steps, pot_hist, color='purple', linewidth=1.5)
-        ax_pot.set_ylabel(r"Potential ($\Phi$)")
-        ax_pot.set_xlabel("Iteration ($t$)")
+        ax_pot.set_ylabel(r"Potential, $\Phi$")
+        ax_pot.set_xlabel("Iteration, $t$")
 
     sanity_path = f"{base_filename}/check_one.png"
     if os.path.dirname(sanity_path):
@@ -957,12 +999,11 @@ def _sanity_check_combined(results, betas_to_test, providers, thetas, color_map,
     display(Image(filename=sanity_path))
 
 def plot_combined_dynamics(providers, thetas, betas_to_test, results, base_filename=None, colors=None, reasoning=False):
-    latexify(font_size=10, small_font_size=8)
+    # CHANGE 1: Reduce base font sizes for the plot content
+    latexify(font_size=9, small_font_size=6) 
     
-
     width_per_plot = ICML_WIDTH_TEXT_PT / 3.0
     
-
     figsize = get_fig_dim(width_per_plot, fraction=1.0, aspect_ratio=0.9)
     
     default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -1001,14 +1042,12 @@ def plot_combined_dynamics(providers, thetas, betas_to_test, results, base_filen
             gridspec_kw={'height_ratios': [1.5, 1], 'hspace': 0.08} 
         )
 
-
         ax_strat.spines['top'].set_visible(False)
         ax_strat.get_yaxis().tick_left()
-        ax_strat.tick_params(axis='both', which='major', labelsize=8)
+        ax_strat.tick_params(axis='both', which='major', labelsize=6)
 
         for provider_name, trajectory in history.items():
             traj_data = np.array(trajectory[:total_steps], dtype=float)
-
             traj_data += provider_offsets[provider_name]
             
             ax_strat.plot(
@@ -1020,23 +1059,23 @@ def plot_combined_dynamics(providers, thetas, betas_to_test, results, base_filen
                 alpha=0.9
             )
 
-        ax_strat.set_ylabel(r"Compute ($\theta$)")
+        ax_strat.set_ylabel(r"Test-time compute, $\theta$", fontsize=7)
 
         if not reasoning:
             ax_strat.set_yticks(range(len(thetas)))
             power_labels = [f"$2^{{{int(np.log2(t))}}}$" for t in thetas]
-            ax_strat.set_yticklabels(power_labels, fontsize=8)
+            ax_strat.set_yticklabels(power_labels, fontsize=6)
             ax_strat.set_ylim(-0.4, len(thetas) - 0.6)
         else:
             ax_strat.set_yticks(range(len(thetas)))
-            ax_strat.set_yticklabels([f"{t}" for t in thetas], fontsize=8)
+            ax_strat.set_yticklabels([f"{t}" for t in thetas], fontsize=6)
 
         ax_ineff = ax_strat.twinx()
         ineff_data = (np.array(poa_hist) - 1.0) * 100
         ax_ineff.plot(steps, ineff_data, color='black', linewidth=1.2, linestyle='--', alpha=0.6)
-        
-        ax_ineff.set_ylabel(r"Ineff. (\%)", color='black', fontsize=9) 
-        ax_ineff.tick_params(axis='y', labelcolor='black', labelsize=8)
+
+        ax_ineff.set_ylabel(r"Inefficiency (\%)", color='black', fontsize=7)
+        ax_ineff.tick_params(axis='y', labelcolor='black', labelsize=6)
         ax_ineff.set_ylim(ineff_ylim)
         ax_ineff.spines['top'].set_visible(False)
 
@@ -1045,7 +1084,7 @@ def plot_combined_dynamics(providers, thetas, betas_to_test, results, base_filen
         ax_share.spines['right'].set_visible(False)
         ax_share.get_xaxis().tick_bottom()
         ax_share.get_yaxis().tick_left()
-        ax_share.tick_params(axis='both', which='major', labelsize=8)
+        ax_share.tick_params(axis='both', which='major', labelsize=6)
 
         share_data = np.array(share_hist)
         bottom = np.zeros(total_steps)
@@ -1063,15 +1102,17 @@ def plot_combined_dynamics(providers, thetas, betas_to_test, results, base_filen
                 alpha=0.9
             )
             bottom += provider_shares
-            
-        ax_share.set_ylabel("Share")
-        ax_share.set_xlabel(r"Iteration ($t$)")
+
+        ax_share.set_ylabel("Market share", fontsize=7)
+        ax_share.set_xlabel(r"Iteration, $t$", fontsize=7)
         ax_share.set_ylim(0, 1.0)
         ax_share.set_yticks([0, 0.5, 1.0]) 
-        ax_share.set_yticklabels(["0", ".5", "1"], fontsize=8)
+        ax_share.set_yticklabels(["0", ".5", "1"], fontsize=6)
         ax_share.set_xlim(-0.5, total_steps - 0.5)
 
         out_file = f"{base_filename}/beta{beta_str}/combined.pdf"
+        if os.path.dirname(out_file):
+             os.makedirs(os.path.dirname(out_file), exist_ok=True)
         fig.savefig(out_file, bbox_inches='tight', pad_inches=0.02)
         plt.close(fig)
 
@@ -1080,13 +1121,15 @@ def plot_combined_dynamics(providers, thetas, betas_to_test, results, base_filen
         ax_pot.spines['right'].set_visible(False)
         ax_pot.get_xaxis().tick_bottom()
         ax_pot.get_yaxis().tick_left()
-        ax_pot.tick_params(axis='both', which='major', labelsize=8)
+        ax_pot.tick_params(axis='both', which='major', labelsize=6)
         
         ax_pot.plot(steps, pot_hist, color='purple', linewidth=1.5)
-        ax_pot.set_ylabel(r"Potential ($\Phi$)")
-        ax_pot.set_xlabel(r"Iteration ($t$)")
+        ax_pot.set_ylabel(r"Potential, $\Phi$")
+        ax_pot.set_xlabel(r"Iteration, $t$")
 
         out_pot = f"{base_filename}/beta{beta_str}/potential.pdf"
+        if os.path.dirname(out_pot):
+             os.makedirs(os.path.dirname(out_pot), exist_ok=True)
         fig_pot.savefig(out_pot, bbox_inches='tight', pad_inches=0.02)
         plt.close(fig_pot)
 
@@ -1125,6 +1168,8 @@ def plot_combined_dynamics(providers, thetas, betas_to_test, results, base_filen
     )
 
     out_leg = f"{base_filename}/legend.pdf"
+    if os.path.dirname(out_leg):
+         os.makedirs(os.path.dirname(out_leg), exist_ok=True)
     fig_leg.savefig(out_leg, bbox_inches='tight', pad_inches=0.02)
     plt.close(fig_leg)
 
@@ -1149,8 +1194,8 @@ def plot_beta_sweep(beta_values, final_poas, base_filename="beta_sweep"):
     ax.plot(beta_values, ineff_values, linestyle='-', linewidth=1.5, color='black')
     
     ax.set_xscale('log') 
-    ax.set_xlabel(r"User Rationality $\beta$")
-    ax.set_ylabel(r"Market Inefficiency (\%)")
+    ax.set_xlabel(r"User rationality, $\beta$")
+    ax.set_ylabel(r"Inefficiency (\%)")
     
     if len(ineff_values) > 0:
         y_max = max(ineff_values)
