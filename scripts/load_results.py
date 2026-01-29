@@ -55,8 +55,6 @@ def load_results(runs_dir="../runs/GSM8K", keep_ids=None):
 
                 total_processed += 1
 
-        # print(f"Total processed: {total_processed}")
-
     results = dict(sorted(results.items(), key=lambda item: item[0]))
 
     return results

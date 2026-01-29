@@ -267,6 +267,7 @@ def run_simulation_sequential_robust(
     
     history = {p.name: [0] for p in providers} 
     poa_history = []
+    sw_hist = []
     potential_history = [] 
     share_history = []  
     
@@ -281,11 +282,15 @@ def run_simulation_sequential_robust(
 
     provider_indices = list(range(num_providers))
 
+    last_change = 0
+    trials = 0
+
     for t in range(max_iter):
         strategies_changed_this_round = False
         random.shuffle(provider_indices)
         
         for i in provider_indices:
+            trials += 1
             p = providers[i]
             
             current_economics = [prov.get_economics(current_strategies[k], config) 
@@ -320,13 +325,45 @@ def run_simulation_sequential_robust(
                     target_strat_idx = theta_candidate
             
             current_idx = current_strategies[i]
-            new_idx = current_idx
-            if target_strat_idx > current_idx: new_idx = current_idx + 1
-            elif target_strat_idx < current_idx: new_idx = current_idx - 1
+            current_util = get_utility(current_shares[i], current_econ['p'], current_econ['c'])
             
-            if new_idx != current_idx:
-                current_strategies[i] = new_idx
+            best_new_idx = current_idx
+            found_improvement = False
+            
+            max_dist = max(current_idx, num_strategies - 1 - current_idx)
+            
+            for dist in range(1, max_dist + 1):
+                candidates = []
+                if current_idx - dist >= 0:
+                    candidates.append(current_idx - dist)
+                if current_idx + dist < num_strategies:
+                    candidates.append(current_idx + dist)
+                
+                for cand_idx in candidates:
+                    cand_econ = p.get_economics(cand_idx, config)
+                    
+                    hypothetical_Vs = current_Vs.copy()
+                    hypothetical_Vs[i] = cand_econ['V']
+                    
+                    shares = get_market_shares(hypothetical_Vs, config.beta, v0)
+                    util = get_utility(shares[i], cand_econ['p'], cand_econ['c'])
+                    
+                    margin = abs(current_util) * tolerance
+                    if margin == 0: margin = 1e-9
+                    
+                    if util > current_util + margin:
+                        best_new_idx = cand_idx
+                        found_improvement = True
+                        break 
+                
+                if found_improvement:
+                    break 
+            
+            if best_new_idx != current_idx:
+                current_strategies[i] = best_new_idx
                 strategies_changed_this_round = True
+                last_change = trials
+            
             
             for k, prov in enumerate(providers):
                 history[prov.name].append(int(current_strategies[k]))
@@ -338,13 +375,13 @@ def run_simulation_sequential_robust(
             
             poa = 1.0 if micro_sw <= 1e-9 else max_possible_sw / micro_sw
             poa_history.append(poa)
+            sw_hist.append((max_possible_sw, micro_sw))
             potential_history.append(calculate_potential(providers, current_strategies, config, v0))
             share_history.append(micro_shares)
 
         if not strategies_changed_this_round:
             break
-
-    return history, poa_history, potential_history, share_history
+    return history, poa_history, potential_history, share_history, sw_hist
 
 
 def compute_market_dynamics(betas_to_test, profit_margin, unreasoning_providers, config):
@@ -354,15 +391,15 @@ def compute_market_dynamics(betas_to_test, profit_margin, unreasoning_providers,
         sim_config = copy.copy(config) 
         sim_config.beta = b
         sim_config.default_margin = profit_margin
-        
-        hist, poa, pot, shares = run_simulation_sequential_robust(
-            unreasoning_providers, 
-            sim_config, 
-            max_iter=1000, 
-            v0=0.0,     
+
+        hist, poa, pot, shares, sw_hist = run_simulation_sequential_robust(
+            unreasoning_providers,
+            sim_config,
+            max_iter=1000,
+            v0=0.0,
             tolerance=0.00000001
         )
-        market_dynamics[b] = (hist, poa, pot, shares)
+        market_dynamics[b] = (hist, poa, pot, shares, sw_hist)
 
     return market_dynamics
 
@@ -378,7 +415,7 @@ def sweep_beta_vs_poa(
         sim_config = copy.copy(base_config)
         sim_config.beta = b
         
-        _, poa_hist, potential_history, _ = run_simulation_sequential_robust(
+        _, poa_hist, potential_history, _, _ = run_simulation_sequential_robust(
             providers, 
             sim_config, 
             max_iter=1000,      

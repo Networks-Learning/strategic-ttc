@@ -7,1207 +7,405 @@ import matplotlib.ticker as ticker
 from IPython.display import display, Image
 
 TOL_12 = [
-    "#004183",  # blue
-    "#4192E3",  # light blue,
-    "#84CDE6",  # cyan,
-    "#16A990",  # teal
-    
-    "#786B06",  # yellow
-    "#E1C84C",  # sand
-    "#F7949F",  # red
-    "#AA3377",  # purple
-    "#56002B",  # wine
-    
-    "#C5C3C3",  # grey
-    "#6E6E6E",  # green
-    "#000000",  # black
-    
+    "#004183", "#4192E3", "#84CDE6", "#16A990", "#786B06", "#E1C84C",
+    "#F7949F", "#AA3377", "#56002B", "#C5C3C3", "#6E6E6E", "#000000"
 ]
-
 ICML_WIDTH_TEXT_PT = 486
 
-
 def get_fig_dim(width, fraction=1, aspect_ratio=None):
-
-    fig_width_pt = width * fraction
-
-    inches_per_pt = 1 / 72.27
-
     if aspect_ratio is None:
         aspect_ratio = (1 + 5**.5) / 2
-
-    fig_width_in = fig_width_pt * inches_per_pt
-    fig_height_in = fig_width_in / aspect_ratio
-
-    fig_dim = (fig_width_in, fig_height_in)
-
-    return fig_dim
-
+    fig_width_in = (width * fraction) / 72.27
+    return (fig_width_in, fig_width_in / aspect_ratio)
 
 def latexify(font_serif='Computer Modern', mathtext_font='cm', font_size=10, small_font_size=None, usetex=True):
-    if small_font_size is None:
-        small_font_size = font_size
-
+    if small_font_size is None: small_font_size = font_size
     params = {
-        'backend': 'ps',
-        'text.latex.preamble': '\\usepackage{gensymb} \\usepackage{bm}',
-            
-        'axes.labelsize': font_size,
-        'axes.titlesize': font_size,
-        'font.size': font_size,
-        
-        'legend.fontsize': small_font_size,
-        'legend.title_fontsize': small_font_size,
-        'xtick.labelsize': small_font_size,
-        'ytick.labelsize': small_font_size,
-        
-        'text.usetex': usetex,    
-        'font.family' : 'serif',
-        'font.serif' : font_serif,
-        'mathtext.fontset' : mathtext_font
+        'backend': 'ps', 'text.latex.preamble': '\\usepackage{gensymb} \\usepackage{bm}',
+        'axes.labelsize': font_size, 'axes.titlesize': font_size, 'font.size': font_size,
+        'legend.fontsize': small_font_size, 'legend.title_fontsize': small_font_size,
+        'xtick.labelsize': small_font_size, 'ytick.labelsize': small_font_size,
+        'text.usetex': usetex, 'font.family': 'serif', 'font.serif': font_serif,
+        'mathtext.fontset': mathtext_font
     }
-
     matplotlib.rcParams.update(params)
     plt.rcParams.update(params)
 
-def assign_colors(model_names):
-    idx = 0
-    model_color = {}
-    for model in model_names:
-        model_color[model] = TOL_12[idx]
-        idx += 1
-    return model_color
+def clean_label(name: str) -> str:
+    clean = name.replace("reason-", "").replace("Distill-", "D-").replace("_", r"\_")
+    return f"\\texttt{{{clean}}}"
 
-def categorize_models(model_names):
-    reasoning_models = sorted([model for model in model_names if "reason" in model])
-    unreasoning_models = sorted([model for model in model_names if model not in reasoning_models])
-    return reasoning_models, unreasoning_models
+def save_fig(fig, path, dpi=None, close=True):
+    if os.path.dirname(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    fig.savefig(path, bbox_inches='tight', pad_inches=0.02, dpi=dpi)
+    if close:
+        plt.close(fig)
 
-def categorize_families(all_models_plot_data):
-    models_data_llama = {x: all_models_plot_data[x] for x in all_models_plot_data.keys() if "Llama" in x}
-    models_data_qwen = {x: all_models_plot_data[x] for x in all_models_plot_data.keys() if x not in models_data_llama.keys()}
-    return models_data_llama, models_data_qwen
+def save_sanity_check(fig, base_filename, suffix="check_one"):
+    path = f"{base_filename}{suffix}.png"
+    save_fig(fig, path, dpi=150, close=True)
+    display(Image(filename=path))
 
-
-def calculate_plot_limits(
-    models_data: dict,
-) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-    
-    model_names = list(models_data.keys())
-    
-    all_acc_values = []
-    for m in model_names:
-        all_acc_values.extend(models_data[m][1] * 100) 
-        all_acc_values.extend(models_data[m][3] * 100)
-        
-    if all_acc_values:
-        y_min, y_max = min(all_acc_values), max(all_acc_values)
-        y_range = y_max - y_min
-        ylim_accuracy = (max(0, y_min - 0.05 * y_range), min(100, y_max + 0.05 * y_range))
-
-    all_tok_values = []
-    for m in model_names:
-        all_tok_values.extend(models_data[m][5])
-        
-    if all_tok_values:
-        y_min, y_max = min(all_tok_values), max(all_tok_values)
-        y_range = y_max - y_min
-        ylim_tokens = (y_min - 0.05 * y_range, y_max + 0.05 * y_range)
-
-
-    return ylim_accuracy, ylim_tokens
-
-def compute_shared_limits(models_data_llama, models_data_qwen):
-
-    ylim_accuracy1, ylim_tokens1 = calculate_plot_limits(
-        models_data=models_data_llama,
-    )
-
-
-    ylim_accuracy2, ylim_tokens2 = calculate_plot_limits(
-        models_data=models_data_qwen,
-    )
-
-    return (min(ylim_accuracy1[0], ylim_accuracy2[0]), max(ylim_accuracy1[1], ylim_accuracy2[1])), \
-           (min(ylim_tokens1[0], ylim_tokens2[0]), max(ylim_tokens1[1], ylim_tokens2[1]))
-
-
-def setup_plot_dimensions(width_pt: float) -> Tuple[Tuple[float, float], Dict[str, float]]:
-    width_per_plot_pt = width_pt / 3.0
-    fig_width_in = width_per_plot_pt / 72.27
-
-    fig_height_in = fig_width_in * 0.9 
-    figsize = (fig_width_in, fig_height_in)
-    
-    margins = {
-        'left': 0.32,   
-        'right': 0.99,
-        'top': 0.98,
-        'bottom': 0.23
-    }
-    return figsize, margins
-
-def apply_axis_style(ax: plt.Axes, log_scale: bool, samples_disp: bool) -> None:
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
+def style_axis(ax, log_x=False, log_base=2, hide_spines=True, show_xlabel=True):
+    if hide_spines:
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
     ax.get_xaxis().tick_bottom()
     ax.get_yaxis().tick_left()
     
-    if log_scale:
-        ax.set_xscale("log", base=2)
-        ax.xaxis.set_major_locator(ticker.LogLocator(base=2.0, subs=[1.0], numticks=4))
-
-    if samples_disp:
-        ax.set_xlabel("Test-time compute, $\\theta$")
-    else:
+    if log_x:
+        ax.set_xscale("log", base=log_base)
+        if log_base == 2:
+            ax.xaxis.set_major_locator(ticker.LogLocator(base=2.0, subs=[1.0], numticks=4))
+    
+    if not show_xlabel:
         ax.set_xticklabels([])
+        ax.set_xlabel("")
 
-def plot_single_metric(
-    ax: plt.Axes,
-    models_data: dict,
-    model_names: List[str],
-    colors: Dict[str, str],
-    metric_idx_mean: int,
-    metric_idx_std: int,
-    is_percentage: bool,
-) -> Tuple[List, List]:
-    handles = []
-    labels = []
-
-    for i, model_name in enumerate(model_names):
-        data_tuple = models_data[model_name]
-        thetas = data_tuple[0]
-        mean_val = data_tuple[metric_idx_mean]
-        std_val = data_tuple[metric_idx_std]
-
-        if is_percentage:
-            y_mean = mean_val * 100
-            y_err = np.asarray(std_val).T * 100
-        else:
-            y_mean = mean_val
-            y_err = np.asarray(std_val).T
-
-        if colors:
-            c = colors.get(model_name)
-        else:
-            raise ValueError("Colors dictionary must be provided")
-
-        clean_name = model_name.replace("_", r"-")
-        label_tex = f"\\texttt{{{clean_name}}}"
-
-        line = ax.errorbar(
-            thetas, y_mean, yerr=y_err,
-            fmt="-o", capsize=3, color=c, label=label_tex,
-            alpha=0.8, markersize=3
-        )
-        handles.append(line)
-        labels.append(label_tex)
-        
-    return handles, labels
-
-def save_standalone_legend(
-    base_filename: str,
-    handles: List,
-    labels: List,
-    width_pt: float
-) -> None:
-
-    leg_width_inch = width_pt / 72.27
+def save_grid_legend(base_filename, handles, labels, width_pt, scaling=1.0, font_size=8):
+    leg_width = (width_pt / 72.27) / scaling
+    num = len(labels)
+    cols = min(num, 4)
+    rows = (num + cols - 1) // cols
+    leg_height = rows * (0.25 / scaling)
     
-    num_models = len(labels)
-    cols = min(num_models, 4)
-    rows = (num_models + cols - 1) // cols
-    
-    height_per_row_inch = 0.25 
-    leg_height_inch = rows * height_per_row_inch
-    
-    fig_leg = plt.figure(figsize=(leg_width_inch, leg_height_inch)) 
-    
-
-    reordered_handles = []
-    reordered_labels = []
-
+    fig = plt.figure(figsize=(leg_width, leg_height))
+    final_handles, final_labels = [], []
     for c in range(cols):
         for r in range(rows):
             idx = r * cols + c
-            if idx < num_models:
-                reordered_handles.append(handles[idx])
-                reordered_labels.append(labels[idx])
+            if idx < num:
+                final_handles.append(handles[idx])
+                final_labels.append(labels[idx])
+            else:
+                final_handles.append(plt.Line2D([0], [0], color='none', label=''))
+                final_labels.append('')
 
-    fig_leg.legend(
-        reordered_handles, reordered_labels,
-        loc='center',
-        ncol=cols, 
-        frameon=False,
-        fontsize=8 
-    )
+    fig.legend(final_handles, final_labels, loc='center', ncol=cols, frameon=False, fontsize=font_size/scaling)
+    save_fig(fig, f"{base_filename}legend.pdf")
+
+def assign_colors(model_names):
+    return {m: TOL_12[i] for i, m in enumerate(model_names)}
+
+def categorize_models(model_names):
+    r = sorted([m for m in model_names if "reason" in m])
+    u = sorted([m for m in model_names if m not in r])
+    return r, u
+
+def categorize_families(all_models_plot_data):
+    llama = {x: d for x, d in all_models_plot_data.items() if "Llama" in x}
+    qwen = {x: d for x, d in all_models_plot_data.items() if x not in llama}
+    return llama, qwen
+
+def calculate_plot_limits(models_data: dict) -> Tuple[Tuple, Tuple]:
+    acc, tok = [], []
+    for m in models_data:
+        acc.extend(models_data[m][1] * 100); acc.extend(models_data[m][3] * 100)
+        tok.extend(models_data[m][5])
     
-    out_leg = f"{base_filename}legend.pdf"
-    fig_leg.savefig(out_leg, pad_inches=0)
-    plt.close(fig_leg)
+    def get_lim(vals, is_acc=False):
+        if not vals: return (0, 100) if is_acc else (0, 1000)
+        mn, mx = min(vals), max(vals)
+        rng = mx - mn
+        pad = 0.05 * rng
+        return (max(0, mn - pad), min(100, mx + pad)) if is_acc else (mn - pad, mx + pad)
+    return get_lim(acc, True), get_lim(tok, False)
 
-def plot_accuracy_one_figure_unreasoning(
-    base_filename: str,
-    models_data: dict,
-    model_names: List[str],
-    colors: Dict[str, str],
-    log_scale: bool,
-    ylim_accuracy: Tuple[float, float],
-    ylim_tokens: Tuple[float, float]
-):
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4), constrained_layout=True)
-    
-    apply_axis_style(axes[0], log_scale, samples_disp=True)
-    plot_single_metric(axes[0], models_data, model_names, colors, 1, 2, True)
-    axes[0].set_title("Majority Voting")
-    axes[0].set_ylabel("Accuracy (\\%)")
-    axes[0].set_ylim(ylim_accuracy)
+def compute_shared_limits(d1, d2):
+    l1, t1 = calculate_plot_limits(d1)
+    l2, t2 = calculate_plot_limits(d2)
+    return (min(l1[0], l2[0]), max(l1[1], l2[1])), (min(t1[0], t2[0]), max(t1[1], t2[1]))
 
-    apply_axis_style(axes[1], log_scale, samples_disp=True)
-    plot_single_metric(axes[1], models_data, model_names, colors, 3, 4, True)
-    axes[1].set_title("Best-of-N")
-    axes[1].set_ylabel("Accuracy (\\%)")
-    axes[1].set_ylim(ylim_accuracy)
-
-    apply_axis_style(axes[2], log_scale, samples_disp=True)
-    handles, labels = plot_single_metric(axes[2], models_data, model_names, colors, 5, 6, False)
-    axes[2].set_title("Avg Tokens")
-    axes[2].set_ylabel("Tokens")
-    axes[2].set_ylim(ylim_tokens)
-
-    fig.legend(handles, labels, loc='center right', bbox_to_anchor=(1.15, 0.5))
-    
-    sanity_filename = f"{base_filename}check_one.png"
-    fig.savefig(sanity_filename, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    
-    display(Image(filename=sanity_filename))
-
-def save_separated_plots_overlaid(
-    models_data: dict,
-    base_filename: str,
-    width_pt: float = 486, 
-    colors: Dict[str, str] = None,
-    log_scale: bool = True,
-    ylim_accuracy: Tuple[float, float] = (0, 100),
-    ylim_tokens: Tuple[float, float] = (0, 1000),
-    samples_disp: bool = True,
-):
-    latexify(font_size=10, small_font_size=8)
-    model_names = list(models_data.keys())
-    if not model_names:
-        print("No models to plot.")
-        return
-
-    figsize, margins = setup_plot_dimensions(width_pt)
-    fig_maj, ax_maj = plt.subplots(figsize=figsize)
-    fig_maj.subplots_adjust(**margins)
-    apply_axis_style(ax_maj, log_scale, samples_disp)
-    
-    handles, labels = plot_single_metric(
-        ax_maj, models_data, model_names, colors, 
-        metric_idx_mean=1, metric_idx_std=2, is_percentage=True, 
-    )
-    
-    ax_maj.set_ylabel(r"Accuracy (\%)")
-    ax_maj.set_ylim(ylim_accuracy)
-
-    out_maj = f"{base_filename}majority.pdf"
-
-    os.makedirs(os.path.dirname(out_maj), exist_ok=True)
-    fig_maj.savefig(out_maj, pad_inches=0)
-    plt.close(fig_maj)
-
-    fig_bon, ax_bon = plt.subplots(figsize=figsize)
-    fig_bon.subplots_adjust(**margins) 
-    apply_axis_style(ax_bon, log_scale, samples_disp)
-
-    plot_single_metric(
-        ax_bon, models_data, model_names, colors, 
-        metric_idx_mean=3, metric_idx_std=4, is_percentage=True, 
-    )
-
-    ax_bon.set_ylabel(r"Accuracy (\%)")
-    ax_bon.set_ylim(ylim_accuracy)
-    
-    out_bon = f"{base_filename}best_of_n.pdf"
-    fig_bon.savefig(out_bon, pad_inches=0)
-    plt.close(fig_bon)
-
-    fig_tok, ax_tok = plt.subplots(figsize=figsize)
-    fig_tok.subplots_adjust(**margins)
-    apply_axis_style(ax_tok, log_scale, samples_disp)
-
-    plot_single_metric(
-        ax_tok, models_data, model_names, colors, 
-        metric_idx_mean=5, metric_idx_std=6, is_percentage=False, 
-    )
-
-    ax_tok.set_ylabel("Tokens")
-    ax_tok.set_ylim(ylim_tokens)
-    ax_tok.yaxis.set_major_locator(ticker.MaxNLocator(nbins=4))
-    
-    out_tok = f"{base_filename}tokens.pdf"
-    fig_tok.savefig(out_tok, pad_inches=0)
-    plt.close(fig_tok)
-
-    save_standalone_legend(base_filename, handles, labels, width_pt)
-    
-    print(f"Saved 4 files to {base_filename}_*.pdf")
-
-    plot_accuracy_one_figure_unreasoning(
-        base_filename, models_data, model_names, colors, 
-        log_scale, ylim_accuracy, ylim_tokens
-    )
-
-def setup_reasoning_layout(width_pt: float) -> Tuple[Tuple[float, float], Dict[str, float]]:
-    """
-    Calculates figure dimensions and margins specific to reasoning plots.
-    Note: Uses a narrower width divisor (2.2) and aspect ratio (0.85) than standard plots.
-    """
-    width_per_plot_pt = width_pt / 2.2  
-    fig_width_in = width_per_plot_pt / 72.27
-    fig_height_in = fig_width_in * 0.85 
-    figsize = (fig_width_in, fig_height_in)
-
-    margins = {
-        'left': 0.28,   
-        'right': 0.98,  
-        'top': 0.98,    
-        'bottom': 0.22  
-    }
-    return figsize, margins
-
-def format_reasoning_label(model_name: str) -> str:
-    clean_name = model_name.replace("reason-", "").replace("Distill-", "D-")
-    clean_name = clean_name.replace("_", r"\_")
-    return f"\\texttt{{{clean_name}}}"
-
-def fix_yerr_shape(errs: Any, n_points: int) -> np.ndarray:
-    yerr = np.array(errs)
-    if yerr.ndim == 2 and yerr.shape == (n_points, 2):
-        return yerr.T
-    return yerr
-
-def style_reasoning_ax(ax: plt.Axes, bins: np.ndarray) -> None:
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.get_xaxis().tick_bottom()
-    ax.get_yaxis().tick_left()
-    ax.set_xticks(bins) 
-
-def plot_reasoning_lines(
-    ax: plt.Axes,
-    models_data: dict,
-    colors: Dict[str, str],
-    metric_idx_mean: int,
-    metric_idx_err: int,
-    is_accuracy: bool,
-    default_colors: List[str] = None
-) -> Tuple[List, List]:
-    if default_colors is None:
-        default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-
-    handles = []
-    labels = []
-
-    for i, (model_name, data) in enumerate(models_data.items()):
-        means = data[metric_idx_mean]
-        errs = data[metric_idx_err]
-        
-        means = np.asarray(means, dtype=float)
-        if is_accuracy:
-            means = means * 100
-            
-        n = means.size
-        bins = np.arange(1, n + 1)
-        yerr = fix_yerr_shape(errs, n)
-
-        if colors:
-            c = colors.get(model_name, default_colors[i % len(default_colors)])
-        else:
-            c = default_colors[i % len(default_colors)]
-
-        label_tex = format_reasoning_label(model_name)
-
-        line = ax.errorbar(
-            bins, means, yerr=yerr,
-            fmt="-o", linewidth=1.2, capsize=3,
-            color=c, label=label_tex, alpha=0.9, markersize=3
-        )
-        
-        handles.append(line)
-        labels.append(label_tex)
-        
+def _plot_metric_on_ax(ax, models_data, model_names, colors, idx_mean, idx_std, is_pct):
+    handles, labels = [], []
+    for m in model_names:
+        data = models_data[m]
+        mean, std = (data[idx_mean] * 100, np.array(data[idx_std]).T * 100) if is_pct else (data[idx_mean], np.array(data[idx_std]).T)
+        c = colors[m]
+        lbl = clean_label(m)
+        l = ax.errorbar(data[0], mean, yerr=std, fmt="-o", capsize=3, color=c, label=lbl, alpha=0.8, markersize=3)
+        handles.append(l); labels.append(lbl)
     return handles, labels
 
-def save_reasoning_legend(
-    base_filename: str,
-    handles: List,
-    labels: List,
-    width_pt: float
-) -> None:
-
-    target_font_size = 8
-    latex_scale_factor = 0.8  
-    adjusted_fontsize = target_font_size / latex_scale_factor 
-    
-    leg_width_inch = (width_pt / 72.27) / latex_scale_factor
-    
-    num_models = len(labels)
-    cols = min(num_models, 3) 
-    rows = (num_models + cols - 1) // cols
-    
-    height_per_row_inch = 0.25 / latex_scale_factor
-    leg_height_inch = rows * height_per_row_inch
-    
-    fig_leg = plt.figure(figsize=(leg_width_inch, leg_height_inch)) 
-    
-    fig_leg.legend(
-        handles, 
-        labels, 
-        loc='center',
-        ncol=cols, 
-        frameon=False,
-        fontsize=adjusted_fontsize 
-    )
-    
-    out_leg = f"{base_filename}legend.pdf"
-    fig_leg.savefig(out_leg, pad_inches=0)
-    plt.close(fig_leg)
-
-def plot_accuracy_one_figure_reasoning(
-    models_data: dict,
-    colors: Dict[str, str],
-    base_filename: str
+def save_separated_plots_overlaid(
+    models_data, 
+    base_filename, 
+    width_pt=486, 
+    colors=None, 
+    log_scale=True, 
+    ylim_accuracy=(0,100), 
+    ylim_tokens=(0,1000), 
+    samples_disp=True
 ):
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4), constrained_layout=True)
+    latexify(font_size=10, small_font_size=8)
+    if not models_data: return
     
-    first_key = list(models_data.keys())[0]
-    n_bins_global = len(models_data[first_key][0])
-    global_bins = np.arange(1, n_bins_global + 1)
+    names = list(models_data.keys())
+    figsize = (width_pt/3.0/72.27, (width_pt/3.0/72.27)*0.9)
+    margins = {'left': 0.32, 'right': 0.99, 'top': 0.98, 'bottom': 0.23}
 
-    style_reasoning_ax(axes[0], global_bins)
-    handles, labels = plot_reasoning_lines(
-        axes[0], models_data, colors, 
-        metric_idx_mean=0, metric_idx_err=1, is_accuracy=True
-    )
-    axes[0].set_title("Accuracy")
-    axes[0].set_ylabel("Accuracy (\%)")
-    axes[0].set_xlabel(r"Test-time compute, $\theta$")
-
-    style_reasoning_ax(axes[1], global_bins)
-    plot_reasoning_lines(
-        axes[1], models_data, colors, 
-        metric_idx_mean=2, metric_idx_err=3, is_accuracy=False
-    )
-    axes[1].set_title("Tokens")
-    axes[1].set_ylabel("Tokens")
-    axes[1].set_xlabel(r"Test-time compute, $\theta$")
-
-    fig.legend(handles, labels, loc='center right', bbox_to_anchor=(1.15, 0.5))
-    
-    sanity_filename = f"{base_filename}check_one.png"
-    fig.savefig(sanity_filename, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    
-    display(Image(filename=sanity_filename))
-
-def save_reasoning_plots_separated(
-    models_data: dict,
-    base_filename: str,
-    width_pt: float = 486, 
-    colors: Dict[str, str] = None,
-):
-    if not models_data:
-        print("No data to plot.")
-        return
-
-    figsize, margins = setup_reasoning_layout(width_pt)
-    default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    
-    first_key = list(models_data.keys())[0]
-    n_bins_global = len(models_data[first_key][0])
-    global_bins = np.arange(1, n_bins_global + 1)
-
-    fig_acc, ax_acc = plt.subplots(figsize=figsize)
-    fig_acc.subplots_adjust(**margins)
-    style_reasoning_ax(ax_acc, global_bins)
-
-    handles, labels = plot_reasoning_lines(
-        ax_acc, models_data, colors, 
-        metric_idx_mean=0, metric_idx_err=1, is_accuracy=True,
-        default_colors=default_colors
-    )
-
-    ax_acc.set_ylabel(r"Accuracy (\%)")
-    ax_acc.set_xlabel(r"Test-time compute, $\theta$")
-
-    out_acc = f"{base_filename}accuracy.pdf"
-    os.makedirs(os.path.dirname(out_acc), exist_ok=True)
-    fig_acc.savefig(out_acc, pad_inches=0)
-    plt.close(fig_acc)
-
-    fig_tok, ax_tok = plt.subplots(figsize=figsize)
-    fig_tok.subplots_adjust(**margins)
-    style_reasoning_ax(ax_tok, global_bins)
-
-    plot_reasoning_lines(
-        ax_tok, models_data, colors, 
-        metric_idx_mean=2, metric_idx_err=3, is_accuracy=False,
-        default_colors=default_colors
-    )
-
-    ax_tok.set_ylabel("Tokens")
-    ax_tok.set_xlabel(r"Test-time compute, $\theta$")
-
-    out_tok = f"{base_filename}tokens.pdf"
-    fig_tok.savefig(out_tok, pad_inches=0)
-    plt.close(fig_tok)
-
-    save_reasoning_legend(base_filename, handles, labels, width_pt)
-
-    print(f"Saved separate files: {out_acc}, {out_tok}, {base_filename}legend.pdf")
-
-    plot_accuracy_one_figure_reasoning(models_data, colors, base_filename)
-
-def style_ax(ax: plt.Axes, thetas: List[int]):
-    """Applies clean spine styling and log-scale x-axis with 2^k labels."""
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.get_xaxis().tick_bottom()
-    ax.get_yaxis().tick_left()
-    
-    # Log scale base 2
-    ax.set_xscale("log", base=2)
-    ax.set_xticks(thetas)
-    
-    # --- CHANGED: Format labels as 2^k ---
-    # np.log2(t) gives the exponent. We cast to int.
-    power_labels = [f"$2^{{{int(np.log2(t))}}}$" for t in thetas]
-    ax.set_xticklabels(power_labels)
-    
-    # Horizontal line at 0 for reference
-    ax.axhline(0, color='black', linewidth=0.8, linestyle='--', alpha=0.5)
-
-def plot_v_curves(
-    V_curves: Dict[str, np.ndarray],
-    thetas: List[int],
-    config: object,
-    base_filename: str,
-    width_pt: float = ICML_WIDTH_TEXT_PT / 3.0,  
-    colors: Dict[str, str] = None,
-    reasoning: bool = False
-):
-    latexify(font_size=9, small_font_size=6)
-    
-    figsize = get_fig_dim(width_pt, fraction=1.0, aspect_ratio=1.6)
-    
-    fig, ax = plt.subplots(figsize=figsize)
-    
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.get_xaxis().tick_bottom()
-    ax.get_yaxis().tick_left()
-    
-    ax.tick_params(axis='both', which='major', labelsize=6)
-    
-    if not reasoning:
-        ax.set_xscale("log", base=2)
-        ax.set_xticks(thetas)
-        power_labels = [f"$2^{{{int(np.log2(t))}}}$" for t in thetas]
-        ax.set_xticklabels(power_labels, fontsize=6)
-    else:
-        ax.set_xticks(thetas)
-        ax.set_xticklabels([str(t) for t in thetas], fontsize=6)
-    
-    ax.axhline(0, color='black', linewidth=0.8, linestyle='--', alpha=0.5)
-    
-    default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    handles, labels = [], []
-    all_v_values = []
-
-    for i, (name, v) in enumerate(V_curves.items()):
-        if colors and name in colors:
-            c = colors[name]
-        else:
-            c = default_colors[i % len(default_colors)]
+    def _save_component(suffix, idx_m, idx_s, is_pct, ylabel, ylim, log, show_x):
+        fig, ax = plt.subplots(figsize=figsize)
+        fig.subplots_adjust(**margins)
+        
+        style_axis(ax, log_x=log, show_xlabel=show_x)
+        
+        h, l = _plot_metric_on_ax(ax, models_data, names, colors, idx_m, idx_s, is_pct)
+        ax.set_ylabel(ylabel)
+        ax.set_ylim(ylim)
+        
+        if show_x:
+            ax.set_xlabel(r"Test-time compute, $\theta$")
             
-        clean_name = name.replace("reason-", "").replace("Distill-", "D-").replace("_", r"\_")
-        label_tex = f"\\texttt{{{clean_name}}}"
-        
-        all_v_values.extend(v)
-        
-        line, = ax.plot(
-            thetas, v, 
-            marker="o", 
-            linewidth=1.2, 
-            markersize=3, 
-            label=label_tex, 
-            color=c,
-            alpha=0.9
-        )
-        
-        handles.append(line)
-        labels.append(label_tex)
+        if "Tokens" in ylabel: 
+            ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=4))
+            
+        save_fig(fig, f"{base_filename}{suffix}.pdf")
+        return h, l
 
-    if all_v_values:
-        y_min, y_max = min(all_v_values), max(all_v_values)
-        y_range = y_max - y_min if y_max != y_min else 1.0
-        padding = 0.1 * y_range  
-        ax.set_ylim(y_min - padding, y_max + padding)
+    h, l = _save_component("majority", 1, 2, True, r"Accuracy (\%)", ylim_accuracy, log_scale, samples_disp)
+    _save_component("best_of_n", 3, 4, True, r"Accuracy (\%)", ylim_accuracy, log_scale, samples_disp)
+    _save_component("tokens", 5, 6, False, "Tokens", ylim_tokens, log_scale, samples_disp)
+    
+    save_grid_legend(base_filename, h, l, width_pt)
+    print(f"Saved files to {base_filename}_*.pdf")
 
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4), constrained_layout=True)
+    params = [(1,2,True,ylim_accuracy,"Majority Voting"), (3,4,True,ylim_accuracy,"Best-of-N"), (5,6,False,ylim_tokens,"Avg Tokens")]
+    for ax, p in zip(axes, params):
+        style_axis(ax, log_x=log_scale, show_xlabel=True)
+        ax.set_xlabel(r"Test-time compute, $\theta$")
+        _plot_metric_on_ax(ax, models_data, names, colors, p[0], p[1], p[2])
+        ax.set_title(p[4]); ax.set_ylim(p[3])
+    save_sanity_check(fig, base_filename)
+
+def _plot_reasoning_lines(ax, models_data, colors, idx_m, idx_e, is_acc):
+    handles, labels = [], []
+    def_cols = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    for i, (m, data) in enumerate(models_data.items()):
+        mean = np.array(data[idx_m], float) * (100 if is_acc else 1)
+        err = np.array(data[idx_e]); 
+        if err.ndim == 2 and err.shape == (mean.size, 2): err = err.T
+        c = colors.get(m, def_cols[i % len(def_cols)]) if colors else def_cols[i % len(def_cols)]
+        lbl = clean_label(m)
+        l = ax.errorbar(np.arange(1, mean.size+1), mean, yerr=err, fmt="-o", linewidth=1.2, capsize=3, color=c, label=lbl, alpha=0.9, markersize=3)
+        handles.append(l); labels.append(lbl)
+    return handles, labels
+
+def save_reasoning_plots_separated(models_data, base_filename, width_pt=486, colors=None):
+    if not models_data: return
+    
+    w_per = width_pt / 2.2
+    figsize = (w_per/72.27, (w_per/72.27)*0.85)
+    margins = {'left': 0.28, 'right': 0.98, 'top': 0.98, 'bottom': 0.22}
+    bins = np.arange(1, len(list(models_data.values())[0][0]) + 1)
+
+    def _do_plot(idx_m, idx_e, is_acc, ylab, out_name):
+        fig, ax = plt.subplots(figsize=figsize)
+        fig.subplots_adjust(**margins)
+        style_axis(ax); ax.set_xticks(bins)
+        h, l = _plot_reasoning_lines(ax, models_data, colors, idx_m, idx_e, is_acc)
+        ax.set_ylabel(ylab); ax.set_xlabel(r"Test-time compute, $\theta$")
+        save_fig(fig, out_name)
+        return h, l
+
+    h, l = _do_plot(0, 1, True, r"Accuracy (\%)", f"{base_filename}accuracy.pdf")
+    _do_plot(2, 3, False, "Tokens", f"{base_filename}tokens.pdf")
+    save_grid_legend(base_filename, h, l, width_pt, scaling=0.8)
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4), constrained_layout=True)
+    for ax, p in zip(axes, [(0,1,True,r"Accuracy (\%)"), (2,3,False,"Tokens")]):
+        style_axis(ax); ax.set_xticks(bins)
+        _plot_reasoning_lines(ax, models_data, colors, p[0], p[1], p[2])
+        ax.set_title(p[3] if "Acc" in p[3] else "Tokens")
+    save_sanity_check(fig, base_filename)
+
+def plot_v_curves(V_curves, thetas, config, base_filename, width_pt=ICML_WIDTH_TEXT_PT/3.0, colors=None, reasoning=False):
+    latexify(font_size=9, small_font_size=6)
+    figsize = get_fig_dim(width_pt, 1.0, 1.6)
+    SCALE = 1000.0
+    
+    def _draw(ax_target):
+        style_axis(ax_target, log_x=(not reasoning))
+        if not reasoning:
+            ax_target.set_xticks(thetas)
+            ax_target.set_xticklabels([f"$2^{{{int(np.log2(t))}}}$" for t in thetas], fontsize=6)
+        else:
+            ax_target.set_xticks(thetas); ax_target.set_xticklabels([str(t) for t in thetas], fontsize=6)
+        ax_target.axhline(0, color='black', lw=0.8, ls='--', alpha=0.5)
+        
+        handles, labels, vals = [], [], []
+        def_cols = plt.rcParams['axes.prop_cycle'].by_key()['color']
+        for i, (name, v) in enumerate(V_curves.items()):
+            c = colors.get(name, def_cols[i % len(def_cols)]) if colors else def_cols[i % len(def_cols)]
+            lbl = clean_label(name)
+            v_scaled = v * SCALE
+            vals.extend(v_scaled)
+            l, = ax_target.plot(thetas, v_scaled, marker="o", lw=1.2, ms=3, label=lbl, color=c, alpha=0.9)
+            handles.append(l); labels.append(lbl)
+        return handles, labels, vals
+
+    fig, ax = plt.subplots(figsize=figsize)
+    h, l, v_vals = _draw(ax)
+    if v_vals:
+        rng = max(v_vals) - min(v_vals)
+        ax.set_ylim(min(v_vals) - 0.1*rng, max(v_vals) + 0.1*rng)
     ax.set_xlabel(r"Test-time compute, $\theta$", fontsize=7)
-    ax.set_ylabel(r"Value (\$)", fontsize=7)
-
-    out_main = f"{base_filename}v_curves.pdf"
-    if os.path.dirname(out_main):
-        os.makedirs(os.path.dirname(out_main), exist_ok=True)
-    fig.savefig(out_main, bbox_inches='tight', pad_inches=0.02)
-    plt.close(fig)
+    ax.set_ylabel(r"Value ($\$ \times 10^{-3}$)", fontsize=7)
+    ax.tick_params(labelsize=6)
     
-    # Save Legend (full width)
-    save_standalone_legend(base_filename, handles, labels, 486)
+    save_fig(fig, f"{base_filename}v_curves.pdf")
+    save_grid_legend(base_filename, h, l, 486)
+    print(f"Saved: {base_filename}v_curves.pdf")
     
-    print(f"Saved: {out_main}")
-    print(f"Saved: {base_filename}_legend.pdf")
+    fig_s, ax_s = plt.subplots(figsize=(4, 2.5), dpi=120)
+    _draw(ax_s)
+    save_sanity_check(fig_s, base_filename)
 
-    _sanity_check_v_curves(V_curves, thetas, colors, handles, labels, base_filename, reasoning=reasoning)
 
-def _sanity_check_v_curves(V_curves, thetas, colors, handles, labels, base_filename, reasoning=False):
-    """Internal helper to display the plot inline."""
-    # Simulate small visual size in notebook
-    fig, ax = plt.subplots(figsize=(4, 2.5), dpi=120) 
-    
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
+def _plot_strategies_component(ax, history, steps, color_map, offsets, thetas, reasoning):
+    for p_name, traj in history.items():
+        data = np.array(traj[:len(steps)], float) + offsets[p_name]
+        ax.plot(steps, data, drawstyle='steps-post', lw=1.2, color=color_map[p_name], alpha=0.9)
     if not reasoning:
-        ax.set_xscale("log", base=2)
-        ax.set_xticks(thetas)
-        power_labels = [f"$2^{{{int(np.log2(t))}}}$" for t in thetas]
-        ax.set_xticklabels(power_labels, fontsize=6)
+        ax.set_yticks(range(len(thetas)))
+        ax.set_yticklabels([f"$2^{{{int(np.log2(t))}}}$" for t in thetas])
+        ax.set_ylim(-0.4, len(thetas) - 0.6)
     else:
-        ax.set_xticks(thetas)
-        ax.set_xticklabels([str(t) for t in thetas], fontsize=6)
-    ax.tick_params(labelsize=8)
-    
-    for i, (name, v) in enumerate(V_curves.items()):
-        c = colors.get(name, 'black') if colors else 'black'
-        ax.plot(thetas, v, marker="o", linewidth=1.2, markersize=3, color=c)
+        ax.set_yticks(range(len(thetas))); ax.set_yticklabels([str(t) for t in thetas])
 
-    ax.set_xlabel(r"Test-time compute, $\theta$", fontsize=10)
-    ax.set_ylabel(r"Value (\$)", fontsize=10)
+def _plot_ineff_twin(ax_main, steps, poa_hist, ylim):
+    ax_ineff = ax_main.twinx()
+    ax_ineff.plot(steps, (np.array(poa_hist)-1.0)*100, 'k--', lw=1.2, alpha=0.6)
+    ax_ineff.set_ylim(ylim)
+    ax_ineff.spines['top'].set_visible(False)
+    return ax_ineff
+
+def _plot_shares_component(ax, share_hist, steps, providers, color_map):
+    bottom = np.zeros(len(steps))
+    for i, p in enumerate(providers):
+        shares = np.array(share_hist)[:, i]
+        ax.bar(steps, shares, bottom=bottom, color=color_map[p.name], width=1.0, edgecolor='none', label=p.name, alpha=0.9)
+        bottom += shares
+    ax.set_ylim(0, 1.0)
+    ax.set_xlim(-0.5, len(steps) - 0.5)
+
+def _get_common_dyn_args(providers, betas_to_test, results, colors):
+    latexify(font_size=10, small_font_size=8) if colors is None else latexify(font_size=9, small_font_size=6)
+    c_arr = plt.cm.tab20(np.linspace(0, 1, len(providers)))
+    c_map = colors if colors else {p.name: c_arr[i % len(c_arr)] for i, p in enumerate(providers)}
+    offs = {p.name: v for p, v in zip(providers, np.linspace(-0.25, 0.25, len(providers)))}
     
-    sanity_file = f"{base_filename}check_one.png"
-    fig.savefig(sanity_file, bbox_inches='tight')
-    plt.close(fig)
-    display(Image(filename=sanity_file))
-    
+    all_ineff = [v for b in betas_to_test for v in (np.array(results[b][1]) - 1.0) * 100]
+    mx = max(all_ineff) if all_ineff else 0
+    ylim_ineff = (0, max(5.0, mx * 1.1))
+    return c_map, offs, ylim_ineff
+
+def _save_common_legend(base_filename, providers, c_map):
+    handles = [plt.Line2D([0], [0], color=c_map[p.name], lw=2, label=clean_label(p.name)) for p in providers]
+    handles.append(plt.Line2D([0], [0], color='black', ls='--', lw=1.5, label=r"Inefficiency (\%)"))
+    save_grid_legend(f"{base_filename}/", handles, [h.get_label() for h in handles], ICML_WIDTH_TEXT_PT)
 
 def bet_pot_analysis(providers, thetas, betas_to_test, results, base_filename=None, colors=None, reasoning=False):
-    latexify(font_size=10, small_font_size=8)
-    
-    width_per_plot = ICML_WIDTH_TEXT_PT / 3.0
-    figsize = get_fig_dim(width_per_plot, fraction=1.0, aspect_ratio=0.75)
-    
-    default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    colors_arr = plt.cm.tab20(np.linspace(0, 1, len(providers)))
-    color_map = colors if colors is not None else {
-        p.name: colors_arr[i % len(colors_arr)] for i, p in enumerate(providers)
-    }   
-    
-
-    num_prov = len(providers)
-    offsets = np.linspace(-0.25, 0.25, num_prov)
-    provider_offsets = {p.name: offsets[i] for i, p in enumerate(providers)}
-
-    all_ineff_values = []
-    for beta in betas_to_test:
-        _, poa_hist, _, _ = results[beta]
-        ineff = (np.array(poa_hist) - 1.0) * 100
-        all_ineff_values.extend(ineff)
-    
-    if all_ineff_values:
-        g_max = max(all_ineff_values)
-        ineff_ylim = (0, g_max * 1.1 if g_max > 0 else 5.0)
-    else:
-        ineff_ylim = (0, 10.0)
-
-    def style_ax(ax):
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.get_xaxis().tick_bottom()
-        ax.get_yaxis().tick_left()
-        ax.tick_params(axis='both', which='major', labelsize=8)
+    c_map, offsets, ylim_ineff = _get_common_dyn_args(providers, betas_to_test, results, colors)
+    figsize = get_fig_dim(ICML_WIDTH_TEXT_PT/3.0, 1.0, 0.75)
 
     for beta in betas_to_test:
-        history, poa_hist, pot_hist, _ = results[beta]
-        total_steps = len(poa_hist)
-        steps = range(total_steps)
-        beta_str = str(beta).replace(".", "p")
-
-        fig_strat, ax_strat = plt.subplots(figsize=figsize)
+        hist, poa, pot, _, _ = results[beta]
+        steps = range(len(poa))
+        b_str = f"beta{str(beta).replace('.', 'p')}"
         
-        ax_strat.spines['top'].set_visible(False)
-        ax_strat.get_xaxis().tick_bottom()
-        ax_strat.get_yaxis().tick_left()
-        ax_strat.tick_params(axis='both', which='major', labelsize=8)
+        fig, ax = plt.subplots(figsize=figsize); style_axis(ax)
+        _plot_strategies_component(ax, hist, steps, c_map, offsets, thetas, reasoning)
+        ax.set_ylabel(r"Test-time compute, $\theta$"); ax.set_xlabel("Iteration, $t$")
+        ax2 = _plot_ineff_twin(ax, steps, poa, ylim_ineff)
+        ax2.set_ylabel(r"Inefficiency (\%)", color='black')
+        save_fig(fig, f"{base_filename}/{b_str}/strategies_combined.pdf")
 
-        for provider_name, trajectory in history.items():
-            traj_data = np.array(trajectory[:total_steps])
-            jittered_data = traj_data + provider_offsets[provider_name]
-            
-            ax_strat.plot(
-                steps, 
-                jittered_data, 
-                drawstyle='steps-post', 
-                linewidth=1.2,
-                color=color_map[provider_name],
-                alpha=0.9
-            )
+        fig, ax = plt.subplots(figsize=figsize); style_axis(ax)
+        ax.plot(steps, pot, color='purple', lw=1.5)
+        ax.set_ylabel(r"Potential, $\Phi$"); ax.set_xlabel("Iteration, $t$")
+        save_fig(fig, f"{base_filename}/{b_str}/potential.pdf")
 
-        ax_strat.set_ylabel("Test-time compute, $\\theta$")
-        ax_strat.set_xlabel("Iteration, $t$")
-
-        if reasoning == False:
-            ax_strat.set_yticks(range(len(thetas)))
-            power_labels = [f"$2^{{{int(np.log2(t))}}}$" for t in thetas]
-            ax_strat.set_yticklabels(power_labels, fontsize=8)
-            ax_strat.set_ylim(-0.4, len(thetas) - 0.6)
-        else:
-            ax_strat.set_yticks(range(len(thetas)))
-            ax_strat.set_yticklabels([f"{t}" for t in thetas], fontsize=8)
-
-
-        ax_ineff = ax_strat.twinx()
-        
-        ineff_data = (np.array(poa_hist) - 1.0) * 100
-        
-        ax_ineff.plot(steps, ineff_data, color='black', linewidth=1.2, linestyle='--', alpha=0.6)
-        
-        ax_ineff.set_ylabel(r"Inefficiency (\%)", color='black', fontsize=9)
-        ax_ineff.tick_params(axis='y', labelcolor='black', labelsize=8)
-        
-        ax_ineff.set_ylim(ineff_ylim)
-        ax_ineff.spines['top'].set_visible(False) 
-        out_strat = f"{base_filename}/beta{beta_str}/strategies_combined.pdf"
-        os.makedirs(os.path.dirname(out_strat), exist_ok=True)
-        fig_strat.savefig(out_strat, bbox_inches='tight', pad_inches=0.02)
-        plt.close(fig_strat)
-
-
-        fig_pot, ax_pot = plt.subplots(figsize=figsize)
-        style_ax(ax_pot)
-        
-        ax_pot.plot(steps, pot_hist, color='purple', linewidth=1.5)
-
-        ax_pot.set_ylabel(r"Potential, $\Phi$")
-        ax_pot.set_xlabel("Iteration, $t$")
-
-        out_pot = f"{base_filename}/beta{beta_str}/potential.pdf"
-        os.makedirs(os.path.dirname(out_pot), exist_ok=True)
-        fig_pot.savefig(out_pot, bbox_inches='tight', pad_inches=0.02)
-        plt.close(fig_pot)
-
-
-    leg_width, _ = get_fig_dim(ICML_WIDTH_TEXT_PT, fraction=1.0)
-    
-    handles = [
-        plt.Line2D([0], [0], color=color_map[p.name], lw=2, label=f"\\texttt{{{p.name.replace('_', r'-')}}}") 
-        for p in providers
-    ]
-    handles.append(plt.Line2D([0], [0], color='black', linestyle='--', lw=1.5, label=r"Inefficiency (\%)"))
-    
-    num_items = len(handles)
-    cols = min(num_items, 4)
-    rows = (num_items + cols - 1) // cols
-
-    final_handles = []
-    for c in range(cols):
-        for r in range(rows):
-            logical_idx = r * cols + c
-            if logical_idx < num_items:
-                final_handles.append(handles[logical_idx])
-            else:
-                final_handles.append(plt.Line2D([0], [0], color='none', label=''))
-
-    leg_height = rows * 0.25 
-    
-    fig_leg = plt.figure(figsize=(leg_width, leg_height))
-    fig_leg.legend(
-        handles=final_handles,
-        loc='center',
-        ncol=cols,
-        frameon=False,
-        fontsize=8,
-        columnspacing=1.0
-    )
-
-    out_leg = f"{base_filename}/legend.pdf"
-    os.makedirs(os.path.dirname(out_leg), exist_ok=True)
-    fig_leg.savefig(out_leg, bbox_inches='tight', pad_inches=0.02)
-    plt.close(fig_leg)
-
-    # _sanity_check_all(
-    #     results, betas_to_test, providers, thetas, color_map, provider_offsets, ineff_ylim, reasoning, base_filename
-    # )
+    _save_common_legend(base_filename, providers, c_map)
 
 def plot_market_shares(providers, betas_to_test, results, base_filename=None, colors=None):
-
-    latexify(font_size=10, small_font_size=8)
+    c_map, _, _ = _get_common_dyn_args(providers, betas_to_test, results, colors)
+    figsize = get_fig_dim(ICML_WIDTH_TEXT_PT/3.0, 1.0, 0.75)
     
-    width_per_plot = ICML_WIDTH_TEXT_PT / 3.0
-    figsize = get_fig_dim(width_per_plot, fraction=1.0, aspect_ratio=0.75)
-    
-    default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    colors_arr = plt.cm.tab20(np.linspace(0, 1, len(providers)))
-    color_map = colors if colors is not None else {
-        p.name: colors_arr[i % len(colors_arr)] for i, p in enumerate(providers)
-    } 
-
-    def style_ax(ax):
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.get_xaxis().tick_bottom()
-        ax.get_yaxis().tick_left()
-        ax.tick_params(axis='both', which='major', labelsize=8)
-
     for beta in betas_to_test:
-        history, poa_hist, pot_hist, share_hist = results[beta]
-        
-
-        share_data = np.array(share_hist)
-        total_steps = len(share_data)
-        steps = range(total_steps)
-        
-        beta_str = str(beta).replace(".", "p")
-
-
-        fig, ax = plt.subplots(figsize=figsize)
-        style_ax(ax)
-        
-        bottom = np.zeros(total_steps)
-        
-        for i, p in enumerate(providers):
-            provider_shares = share_data[:, i]
-            
-            ax.bar(
-                steps, 
-                provider_shares, 
-                bottom=bottom, 
-                color=color_map[p.name], 
-                width=1.0, 
-                edgecolor='white', 
-                linewidth=0.3,
-                label=p.name,
-                alpha=0.9
-            )
-            
-            bottom += provider_shares
-            
-        ax.set_ylabel("Market share")
-        ax.set_xlabel("Iteration, $t$")
-        ax.set_ylim(0, 1.0) 
-        ax.set_xlim(-0.5, total_steps - 0.5)
-
-        out_file = f"{base_filename}/beta{beta_str}/shares.pdf"
-        fig.savefig(out_file, bbox_inches='tight', pad_inches=0.02)
-        plt.close(fig)
-
-def _sanity_check_combined(results, betas_to_test, providers, thetas, color_map, provider_offsets, ineff_ylim, reasoning, base_filename):
-    
-    num_betas = len(betas_to_test)
-    fig, axes = plt.subplots(nrows=num_betas, ncols=3, figsize=(18, 4 * num_betas), constrained_layout=True)
-    
-    if num_betas == 1:
-        axes = np.array([axes])
-
-    for i, beta in enumerate(betas_to_test):
-        history, poa_hist, pot_hist, share_hist = results[beta]
-        total_steps = len(poa_hist)
-        steps = range(total_steps)
-        
-        ax_strat = axes[i, 0]
-        ax_strat.set_title(f"Beta={beta}: Strategies")
-        
-        for provider_name, trajectory in history.items():
-            traj_data = np.array(trajectory[:total_steps], dtype=float)
-            traj_data += provider_offsets[provider_name]
-            
-            ax_strat.plot(
-                steps, 
-                traj_data, 
-                drawstyle='steps-post', 
-                linewidth=1.2,
-                color=color_map[provider_name],
-                alpha=0.9
-            )
-
-        ax_strat.set_ylabel(r"Test-time compute, $\theta$")
-        ax_strat.set_xlabel("Iteration, $t$")
-        
-        if not reasoning:
-            ax_strat.set_yticks(range(len(thetas)))
-            power_labels = [f"$2^{{{int(np.log2(t))}}}$" for t in thetas]
-            ax_strat.set_yticklabels(power_labels, fontsize=8)
-            ax_strat.set_ylim(-0.4, len(thetas) - 0.6)
-        else:
-            ax_strat.set_yticks(range(len(thetas)))
-            ax_strat.set_yticklabels([f"{t}" for t in thetas], fontsize=8)
-
-        ax_ineff = ax_strat.twinx()
-        ineff_data = (np.array(poa_hist) - 1.0) * 100
-        ax_ineff.plot(steps, ineff_data, color='black', linewidth=1.2, linestyle='--', alpha=0.6)
-        ax_ineff.set_ylabel("Ineff (%)", color='black')
-        ax_ineff.set_ylim(ineff_ylim)
-
-        ax_share = axes[i, 1]
-        ax_share.set_title(f"Beta={beta}: Shares")
-        
-        share_data = np.array(share_hist)
-        bottom = np.zeros(total_steps)
-        
-        for p in providers:
-            p_shares = share_data[:, providers.index(p)]
-            ax_share.bar(
-                steps, 
-                p_shares, 
-                bottom=bottom, 
-                color=color_map[p.name], 
-                width=1.0, 
-                edgecolor='none'
-            )
-            bottom += p_shares
-            
-        ax_share.set_ylim(0, 1.0)
-        ax_share.set_ylabel("Market share")
-        ax_share.set_xlabel("Iteration, $t$")
-
-        ax_pot = axes[i, 2]
-        ax_pot.set_title(f"Beta={beta}: Potential")
-        ax_pot.plot(steps, pot_hist, color='purple', linewidth=1.5)
-        ax_pot.set_ylabel(r"Potential, $\Phi$")
-        ax_pot.set_xlabel("Iteration, $t$")
-
-    sanity_path = f"{base_filename}/check_one.png"
-    if os.path.dirname(sanity_path):
-        os.makedirs(os.path.dirname(sanity_path), exist_ok=True)
-        
-    fig.savefig(sanity_path, dpi=100, bbox_inches='tight')
-    plt.close(fig)
-    
-    display(Image(filename=sanity_path))
+        share_hist = results[beta][3]
+        steps = range(len(share_hist))
+        fig, ax = plt.subplots(figsize=figsize); style_axis(ax)
+        _plot_shares_component(ax, share_hist, steps, providers, c_map)
+        ax.set_ylabel("Market share"); ax.set_xlabel("Iteration, $t$")
+        save_fig(fig, f"{base_filename}/beta{str(beta).replace('.', 'p')}/shares.pdf")
 
 def plot_combined_dynamics(providers, thetas, betas_to_test, results, base_filename=None, colors=None, reasoning=False):
-    # CHANGE 1: Reduce base font sizes for the plot content
-    latexify(font_size=9, small_font_size=6) 
+    c_map, offsets, ylim_ineff = _get_common_dyn_args(providers, betas_to_test, results, colors)
+    latexify(font_size=9, small_font_size=6)
     
-    width_per_plot = ICML_WIDTH_TEXT_PT / 3.0
-    
-    figsize = get_fig_dim(width_per_plot, fraction=1.0, aspect_ratio=0.9)
-    
-    default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    colors_arr = plt.cm.tab20(np.linspace(0, 1, len(providers)))
-    color_map = colors if colors is not None else {
-        p.name: colors_arr[i % len(colors_arr)] for i, p in enumerate(providers)
-    }   
-    
-    num_prov = len(providers)
-    offsets = np.linspace(-0.25, 0.25, num_prov)
-    provider_offsets = {p.name: offsets[i] for i, p in enumerate(providers)}
-
-    all_ineff_values = []
-    for beta in betas_to_test:
-        _, poa_hist, _, _ = results[beta]
-        ineff = (np.array(poa_hist) - 1.0) * 100
-        all_ineff_values.extend(ineff)
-    
-    if all_ineff_values:
-        g_max = max(all_ineff_values)
-        ineff_ylim = (0, max(5.0, g_max * 1.1))
-    else:
-        ineff_ylim = (0, 10.0)
+    figsize_stacked = get_fig_dim(ICML_WIDTH_TEXT_PT/3.0, 1.0, 0.9)
+    figsize_pot = get_fig_dim(ICML_WIDTH_TEXT_PT/3.0, 1.0, 0.75)
 
     for beta in betas_to_test:
-        history, poa_hist, pot_hist, share_hist = results[beta]
-        total_steps = len(poa_hist)
-        steps = range(total_steps)
-        beta_str = str(beta).replace(".", "p")
+        hist, poa, pot, shares, _ = results[beta]
+        steps = range(len(poa))
+        b_str = f"beta{str(beta).replace('.', 'p')}"
+
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize_stacked, sharex=True, gridspec_kw={'height_ratios': [1.5, 1], 'hspace': 0.08})
+        style_axis(ax1); style_axis(ax2, hide_spines=False)
+        ax2.spines['top'].set_visible(False); ax2.spines['right'].set_visible(False)
         
-        fig, (ax_strat, ax_share) = plt.subplots(
-            nrows=2, 
-            ncols=1, 
-            figsize=figsize, 
-            sharex=True,
-            gridspec_kw={'height_ratios': [1.5, 1], 'hspace': 0.08} 
-        )
+        _plot_strategies_component(ax1, hist, steps, c_map, offsets, thetas, reasoning)
+        ax1.set_ylabel(r"Test-time compute, $\theta$", fontsize=7)
+        ax_tw = _plot_ineff_twin(ax1, steps, poa, ylim_ineff)
+        ax_tw.set_ylabel(r"Inefficiency (\%)", color='black', fontsize=7)
 
-        ax_strat.spines['top'].set_visible(False)
-        ax_strat.get_yaxis().tick_left()
-        ax_strat.tick_params(axis='both', which='major', labelsize=6)
-
-        for provider_name, trajectory in history.items():
-            traj_data = np.array(trajectory[:total_steps], dtype=float)
-            traj_data += provider_offsets[provider_name]
-            
-            ax_strat.plot(
-                steps, 
-                traj_data, 
-                drawstyle='steps-post', 
-                linewidth=1.2,
-                color=color_map[provider_name],
-                alpha=0.9
-            )
-
-        ax_strat.set_ylabel(r"Test-time compute, $\theta$", fontsize=7)
-
-        if not reasoning:
-            ax_strat.set_yticks(range(len(thetas)))
-            power_labels = [f"$2^{{{int(np.log2(t))}}}$" for t in thetas]
-            ax_strat.set_yticklabels(power_labels, fontsize=6)
-            ax_strat.set_ylim(-0.4, len(thetas) - 0.6)
-        else:
-            ax_strat.set_yticks(range(len(thetas)))
-            ax_strat.set_yticklabels([f"{t}" for t in thetas], fontsize=6)
-
-        ax_ineff = ax_strat.twinx()
-        ineff_data = (np.array(poa_hist) - 1.0) * 100
-        ax_ineff.plot(steps, ineff_data, color='black', linewidth=1.2, linestyle='--', alpha=0.6)
-
-        ax_ineff.set_ylabel(r"Inefficiency (\%)", color='black', fontsize=7)
-        ax_ineff.tick_params(axis='y', labelcolor='black', labelsize=6)
-        ax_ineff.set_ylim(ineff_ylim)
-        ax_ineff.spines['top'].set_visible(False)
-
-
-        ax_share.spines['top'].set_visible(False) 
-        ax_share.spines['right'].set_visible(False)
-        ax_share.get_xaxis().tick_bottom()
-        ax_share.get_yaxis().tick_left()
-        ax_share.tick_params(axis='both', which='major', labelsize=6)
-
-        share_data = np.array(share_hist)
-        bottom = np.zeros(total_steps)
+        _plot_shares_component(ax2, shares, steps, providers, c_map)
+        ax2.set_ylabel("Market share", fontsize=7); ax2.set_xlabel(r"Iteration, $t$", fontsize=7)
+        ax2.set_yticks([0, 0.5, 1.0]); ax2.set_yticklabels(["0", ".5", "1"], fontsize=6)
         
-        for i, p in enumerate(providers):
-            provider_shares = share_data[:, i]
-            ax_share.bar(
-                steps, 
-                provider_shares, 
-                bottom=bottom, 
-                color=color_map[p.name], 
-                width=1.0, 
-                edgecolor='none', 
-                label=p.name,
-                alpha=0.9
-            )
-            bottom += provider_shares
+        save_fig(fig, f"{base_filename}/{b_str}/combined.pdf")
 
-        ax_share.set_ylabel("Market share", fontsize=7)
-        ax_share.set_xlabel(r"Iteration, $t$", fontsize=7)
-        ax_share.set_ylim(0, 1.0)
-        ax_share.set_yticks([0, 0.5, 1.0]) 
-        ax_share.set_yticklabels(["0", ".5", "1"], fontsize=6)
-        ax_share.set_xlim(-0.5, total_steps - 0.5)
+        fig, ax = plt.subplots(figsize=figsize_pot); style_axis(ax)
+        ax.plot(steps, pot, color='purple', lw=1.5)
+        ax.set_ylabel(r"Potential, $\Phi$"); ax.set_xlabel(r"Iteration, $t$")
+        save_fig(fig, f"{base_filename}/{b_str}/potential.pdf")
 
-        out_file = f"{base_filename}/beta{beta_str}/combined.pdf"
-        if os.path.dirname(out_file):
-             os.makedirs(os.path.dirname(out_file), exist_ok=True)
-        fig.savefig(out_file, bbox_inches='tight', pad_inches=0.02)
-        plt.close(fig)
+    _save_common_legend(base_filename, providers, c_map)
+    _sanity_check_combined(results, betas_to_test, providers, thetas, c_map, offsets, ylim_ineff, reasoning, base_filename)
 
-        fig_pot, ax_pot = plt.subplots(figsize=get_fig_dim(width_per_plot, fraction=1.0, aspect_ratio=0.75))
-        ax_pot.spines['top'].set_visible(False)
-        ax_pot.spines['right'].set_visible(False)
-        ax_pot.get_xaxis().tick_bottom()
-        ax_pot.get_yaxis().tick_left()
-        ax_pot.tick_params(axis='both', which='major', labelsize=6)
+def _sanity_check_combined(results, betas, providers, thetas, c_map, offsets, ylim_ineff, reasoning, base_filename):
+    n = len(betas)
+    fig, axes = plt.subplots(n, 3, figsize=(18, 4*n), constrained_layout=True)
+    if n == 1: axes = np.array([axes])
+    
+    for i, beta in enumerate(betas):
+        hist, poa, pot, shares, _ = results[beta]
+        steps = range(len(poa))
         
-        ax_pot.plot(steps, pot_hist, color='purple', linewidth=1.5)
-        ax_pot.set_ylabel(r"Potential, $\Phi$")
-        ax_pot.set_xlabel(r"Iteration, $t$")
+        ax = axes[i, 0]; style_axis(ax); ax.set_title(f"Beta={beta}: Strategies")
+        _plot_strategies_component(ax, hist, steps, c_map, offsets, thetas, reasoning)
+        _plot_ineff_twin(ax, steps, poa, ylim_ineff)
+        
+        ax = axes[i, 1]; style_axis(ax); ax.set_title("Shares")
+        _plot_shares_component(ax, shares, steps, providers, c_map)
+        
+        ax = axes[i, 2]; style_axis(ax); ax.set_title("Potential")
+        ax.plot(steps, pot, color='purple'); ax.set_ylabel(r"$\Phi$")
 
-        out_pot = f"{base_filename}/beta{beta_str}/potential.pdf"
-        if os.path.dirname(out_pot):
-             os.makedirs(os.path.dirname(out_pot), exist_ok=True)
-        fig_pot.savefig(out_pot, bbox_inches='tight', pad_inches=0.02)
-        plt.close(fig_pot)
-
-
-    leg_width, _ = get_fig_dim(ICML_WIDTH_TEXT_PT, fraction=1.0)
-    
-    handles = [
-        plt.Line2D([0], [0], color=color_map[p.name], lw=2, label=f"\\texttt{{{p.name.replace('_', r'-')}}}") 
-        for p in providers
-    ]
-    handles.append(plt.Line2D([0], [0], color='black', linestyle='--', lw=1.5, label=r"Inefficiency (\%)"))
-    
-    num_items = len(handles)
-    cols = min(num_items, 4)
-    rows = (num_items + cols - 1) // cols
-
-    final_handles = []
-    for c in range(cols):
-        for r in range(rows):
-            logical_idx = r * cols + c
-            if logical_idx < num_items:
-                final_handles.append(handles[logical_idx])
-            else:
-                final_handles.append(plt.Line2D([0], [0], color='none', label=''))
-
-    leg_height = rows * 0.25 
-    
-    fig_leg = plt.figure(figsize=(leg_width, leg_height))
-    fig_leg.legend(
-        handles=final_handles,
-        loc='center',
-        ncol=cols,
-        frameon=False,
-        fontsize=8,
-        columnspacing=1.0
-    )
-
-    out_leg = f"{base_filename}/legend.pdf"
-    if os.path.dirname(out_leg):
-         os.makedirs(os.path.dirname(out_leg), exist_ok=True)
-    fig_leg.savefig(out_leg, bbox_inches='tight', pad_inches=0.02)
-    plt.close(fig_leg)
-
-    _sanity_check_combined(
-        results, betas_to_test, providers, thetas, color_map, provider_offsets, ineff_ylim, reasoning, base_filename
-    )
+    save_sanity_check(fig, base_filename)
 
 def plot_beta_sweep(beta_values, final_poas, base_filename="beta_sweep"):
     latexify(font_size=10, small_font_size=8)
-    figsize = get_fig_dim(ICML_WIDTH_TEXT_PT, fraction=1.0)
+    fig, ax = plt.subplots(figsize=get_fig_dim(ICML_WIDTH_TEXT_PT, 1.0))
+    style_axis(ax)
+    ineff = (np.array(final_poas) - 1.0) * 100
+    ax.plot(beta_values, ineff, 'k-', lw=1.5)
+    ax.set_xscale('log'); ax.set_xlabel(r"User rationality, $\beta$"); ax.set_ylabel(r"Inefficiency (\%)")
+    if len(ineff) > 0: ax.set_ylim(0, max(5.0, max(ineff) * 1.1))
     
-    fig, ax = plt.subplots(figsize=figsize)
-    
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.get_xaxis().tick_bottom()
-    ax.get_yaxis().tick_left()
-    ax.tick_params(axis='both', which='major', labelsize=8)
-
-    ineff_values = (np.array(final_poas) - 1.0) * 100
-    
-    ax.plot(beta_values, ineff_values, linestyle='-', linewidth=1.5, color='black')
-    
-    ax.set_xscale('log') 
-    ax.set_xlabel(r"User rationality, $\beta$")
-    ax.set_ylabel(r"Inefficiency (\%)")
-    
-    if len(ineff_values) > 0:
-        y_max = max(ineff_values)
-        ax.set_ylim(0, max(5.0, y_max * 1.1)) 
-    
-    output_pdf = f"{base_filename}inefficiency.pdf"
-    if os.path.dirname(output_pdf):
-        os.makedirs(os.path.dirname(output_pdf), exist_ok=True)
-    fig.savefig(output_pdf, bbox_inches='tight', pad_inches=0.02)
-
-    output_png = f"{base_filename}inefficiency.png"
-    fig.savefig(output_png, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    
-    display(Image(filename=output_png))
+    save_fig(fig, f"{base_filename}inefficiency.pdf", close=False)
+    save_sanity_check(fig, base_filename, suffix="inefficiency")
