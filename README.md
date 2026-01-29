@@ -8,25 +8,16 @@ We model the LLM-as-a-service market as a game where providers compete by strate
 
 The repository is organized as follows:
 
-```
+```Plaintext
 .
-
 ├── configs/            # Experiment configuration files (YAML) for Llama, Qwen, etc.
-
 ├── notebooks/          # Jupyter notebooks for recreating paper figures and analysis
-
 ├── scripts/            # Helper scripts for loading results and SLURM job submission
-
 ├── strategic_ttc/      # Main package source code
-
 │   ├── benchmarks/     # Benchmark datasets (GSM8K, AIME, GPQA)
-
 │   ├── core/           # Core logic: Game dynamics, Auction mechanism, Generation
-
 │   ├── models/         # HuggingFace model wrappers
-
 │   └── verifiers/      # Answer extraction and verification logic
-
 └── pyproject.toml      # Project metadata and build configuration
 ```
 
@@ -63,23 +54,23 @@ The repository is organized as follows:
 
 1. **Run Inference (Data Generation)**
 
-To generate the raw performance data (Accuracy vs. Tokens) for different models and compute budgets, use the CLI with a configuration file:
+    To generate the raw performance data (Accuracy vs. Tokens) for different models and compute budgets, use the CLI with a configuration file:
 
-```bash
-python -m strategic_ttc.cli --config configs/Llama-3-8B--temp-0.6--samples-128--max-512.yaml
-```
+    ```bash
+    python -m strategic_ttc.cli --config configs/Llama-3-8B--temp-0.6--samples-128--max-512.yaml
+    ```
 
-*Note: Raw run data is saved to `runs/` (not included in the repo) which is required for the analysis steps.*
+    *Note: Raw run data is saved to `runs/` (not included in the repo) which is required for the analysis steps.*
 
 2. **Analyze Game Dynamics**
 
-Use the provided notebooks to simulate the market game, compute Nash Equilibria, and compare with the Auction mechanism.
+    Use the provided notebooks to simulate the market game, compute Nash Equilibria, and compare with the Auction mechanism.
 
-- GSM8K Analysis: `notebooks/GSM8K-demo.ipynb`
-- AIME Analysis: `notebooks/AIME-demo.ipynb`
-- GPQA Analysis: `notebooks/GPQA-demo.ipynb`
+    - GSM8K Analysis: `notebooks/GSM8K-demo.ipynb`
+    - AIME Analysis: `notebooks/AIME-demo.ipynb`
+    - GPQA Analysis: `notebooks/GPQA-demo.ipynb`
 
-These notebooks will generate the plots and tables found in the paper, saving them to the `figures/` directory.
+    These notebooks will generate the plots and tables found in the paper, saving them to the `figures/` directory.
 
 ## Data Management
 
