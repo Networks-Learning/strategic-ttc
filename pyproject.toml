@@ -5,6 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "strategic-ttc"
 version = "0.1.0"
+license = {text = "MIT"}
 
 [tool.setuptools.packages.find]
 where = ["."]
