@@ -89,6 +89,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Citation
 
+If you find this code useful, please cite our paper:
+
 ```Plaintext
 @misc{velasco2026testtimecomputegames,
       title={Test-Time Compute Games}, 
@@ -100,8 +102,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
       url={https://arxiv.org/abs/2601.21839}, 
 }
 ```
-
-If you find this code useful, please cite our paper:
 
 ```
 ```
