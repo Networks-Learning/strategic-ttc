@@ -89,6 +89,18 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Citation
 
+```Plaintext
+@misc{velasco2026testtimecomputegames,
+      title={Test-Time Compute Games}, 
+      author={Ander Artola Velasco and Dimitrios Rontogiannis and Stratis Tsirtsis and Manuel Gomez-Rodriguez},
+      year={2026},
+      eprint={2601.21839},
+      archivePrefix={arXiv},
+      primaryClass={cs.CY},
+      url={https://arxiv.org/abs/2601.21839}, 
+}
+```
+
 If you find this code useful, please cite our paper:
 
 ```
