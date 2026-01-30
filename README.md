@@ -60,9 +60,15 @@ The repository is organized as follows:
     python -m strategic_ttc.cli --config configs/Llama-3-8B--temp-0.6--samples-128--max-512.yaml
     ```
 
-    *Note: Raw run data is saved to `final_runs/` (not included in the repo) which is required for the analysis steps.*
+   *Note:* The raw run data is hosted on [Hugging Face Datasets](https://huggingface.co/datasets/Human-Centric-Machine-Learning/strategic-ttc-data).
+   To run the analysis notebooks, you must download the data into the `final_runs/` folder.
 
-2. **Analyze Game Dynamics**
+   ```bash
+   # Clone the data directly into the expected folder
+   git clone https://huggingface.co/datasets/Human-Centric-Machine-Learning/strategic-ttc-data final_runs
+   ```
+   
+3. **Analyze Game Dynamics**
 
     Use the provided notebooks to simulate the market game, compute Nash Equilibria, and compare with the Auction mechanism.
 
